@@ -3,11 +3,15 @@ package notifier
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"text/template"
+
+	"github.com/esiqveland/notify"
 )
 
 const DefaultNotificationTitle = "YubiKey is waiting for a touch"
 const DefaultNotificationBody = "Touch your YubiKey to continue ({{.Reasons}})."
+const DefaultNotificationUrgency = "normal"
 
 type notificationTemplateData struct {
 	Reasons string
@@ -41,4 +45,20 @@ func (templates *notificationTemplates) render(reasons string) (string, string, 
 		return "", "", fmt.Errorf("rendering notification body: %w", err)
 	}
 	return title.String(), body.String(), nil
+}
+
+// newNotificationUrgency parses a desktop notification urgency level.
+// Notification daemons typically keep "critical" notifications on screen
+// until they are explicitly closed, which suits touch prompts well.
+func newNotificationUrgency(urgency string) (notify.Urgency, error) {
+	switch strings.ToLower(strings.TrimSpace(urgency)) {
+	case "low":
+		return notify.UrgencyLow, nil
+	case "normal":
+		return notify.UrgencyNormal, nil
+	case "critical":
+		return notify.UrgencyCritical, nil
+	default:
+		return notify.UrgencyNormal, fmt.Errorf("invalid notification urgency %q, expected one of: low, normal, critical", urgency)
+	}
 }

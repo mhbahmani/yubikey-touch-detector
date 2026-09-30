@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/esiqveland/notify"
 	"github.com/godbus/dbus/v5"
 )
 
@@ -121,6 +122,36 @@ func TestNotificationReferenceHandlesClosedSignal(t *testing.T) {
 			}
 			if name != "matching" && reference.id != 42 {
 				t.Fatalf("unrelated close changed ID to %d, want 42", reference.id)
+			}
+		})
+	}
+}
+
+func TestNewNotificationUrgency(t *testing.T) {
+	for name, test := range map[string]struct {
+		value string
+		want  notify.Urgency
+		valid bool
+	}{
+		"low":              {value: "low", want: notify.UrgencyLow, valid: true},
+		"normal":           {value: "normal", want: notify.UrgencyNormal, valid: true},
+		"critical":         {value: "critical", want: notify.UrgencyCritical, valid: true},
+		"case-insensitive": {value: "Critical", want: notify.UrgencyCritical, valid: true},
+		"with whitespace":  {value: " critical ", want: notify.UrgencyCritical, valid: true},
+		"invalid":          {value: "urgent", valid: false},
+		"empty":            {value: "", valid: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := newNotificationUrgency(test.value)
+			if test.valid {
+				if err != nil {
+					t.Fatalf("newNotificationUrgency(%q) returned error: %v", test.value, err)
+				}
+				if got != test.want {
+					t.Fatalf("newNotificationUrgency(%q) = %d, want %d", test.value, got, test.want)
+				}
+			} else if err == nil {
+				t.Fatalf("newNotificationUrgency(%q) = %d, want error", test.value, got)
 			}
 		})
 	}

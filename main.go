@@ -34,6 +34,10 @@ func main() {
 	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY"); found {
 		notificationBody = value
 	}
+	notificationUrgency := notifier.DefaultNotificationUrgency
+	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY"); found {
+		notificationUrgency = value
+	}
 
 	var version bool
 	var verbose bool
@@ -48,6 +52,7 @@ func main() {
 	flag.BoolVar(&desktopNotify, "libnotify", envNotify || envLibnotify, "deprecated alias for --notify")
 	flag.StringVar(&notificationTitle, "notify-title", notificationTitle, "desktop notification title template")
 	flag.StringVar(&notificationBody, "notify-body", notificationBody, "desktop notification body template")
+	flag.StringVar(&notificationUrgency, "notify-urgency", notificationUrgency, "desktop notification urgency: low, normal, or critical")
 	flag.BoolVar(&stdout, "stdout", envStdout, "print notifications to stdout")
 	flag.BoolVar(&nosocket, "no-socket", envNosocket, "disable unix socket notifier")
 	flag.BoolVar(&dbus, "dbus", envDbus, "enable dbus server for IPC")
@@ -84,7 +89,7 @@ func main() {
 		go notifier.SetupUnixSocketNotifier(notifiers, exits)
 	}
 	if desktopNotify {
-		go notifier.SetupDesktopNotifier(notifiers, notificationTitle, notificationBody)
+		go notifier.SetupDesktopNotifier(notifiers, notificationTitle, notificationBody, notificationUrgency)
 	}
 	if stdout {
 		go notifier.SetupStdoutNotifier(notifiers)

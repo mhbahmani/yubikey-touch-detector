@@ -19,6 +19,9 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 *-notify-body* _body_
 	Set the desktop notification body template. Defaults to "Touch your YubiKey to continue ({{.Reasons}})."
 
+*-notify-urgency* _urgency_
+	Set the desktop notification urgency: low, normal, or critical. Defaults to "normal". Notification daemons typically keep critical notifications on screen until they are dismissed; the app closes its notification as soon as the touch is registered.
+
 The notification title and body use Go template syntax. _{{.Reasons}}_ expands to a sorted, comma-separated list of active event types: _gpg_, _hmac_, and _u2f_.
 
 *-no-socket*
@@ -55,6 +58,9 @@ _YUBIKEY_TOUCH_DETECTOR_NOTIFY_TITLE_
 
 _YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY_
 	Equivalent to specifying *-notify-body*.
+
+_YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY_
+	Equivalent to specifying *-notify-urgency*.
 
 _YUBIKEY_TOUCH_DETECTOR_STDOUT_
 	Equivalent to specifying *-stdout*.

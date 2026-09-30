@@ -76,6 +76,12 @@ $ yubikey-touch-detector --notify --notify-title "Security key required: {{.Reas
 
 The title and body are Go templates. `{{.Reasons}}` expands to a sorted, comma-separated list of the active event types (`gpg`, `hmac`, and `u2f`). It can be placed in either field or omitted. The default body is `Touch your YubiKey to continue ({{.Reasons}}).`, allowing notification daemons such as dunst to match the event type.
 
+The notification urgency can also be set to `low`, `normal` (default), or `critical`. Most notification daemons keep `critical` notifications on screen until they are dismissed, and the app closes its notification as soon as the touch is registered, making this useful when the default banner is too easy to miss:
+
+```
+$ yubikey-touch-detector --notify --notify-urgency critical
+```
+
 #### Configuring the app
 
 The app supports the following environment variables and CLI arguments (CLI args take precedence):
@@ -86,6 +92,7 @@ The app supports the following environment variables and CLI arguments (CLI args
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY`    | `--notify`    |
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_TITLE` | `--notify-title` |
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY` | `--notify-body` |
+| `YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY` | `--notify-urgency` |
 | `YUBIKEY_TOUCH_DETECTOR_STDOUT`    | `--stdout`    |
 | `YUBIKEY_TOUCH_DETECTOR_NOSOCKET`  | `--no-socket` |
 | `YUBIKEY_TOUCH_DETECTOR_DBUS`      | `--dbus`      |

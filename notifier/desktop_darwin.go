@@ -9,7 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func SetupDesktopNotifier(notifiers *sync.Map, title, body string) {
+func SetupDesktopNotifier(notifiers *sync.Map, title, body, _ string) {
 	templates, err := newNotificationTemplates(title, body)
 	if err != nil {
 		log.Error("Cannot initialize desktop notifications: ", err)
