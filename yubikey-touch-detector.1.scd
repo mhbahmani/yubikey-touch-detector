@@ -17,12 +17,15 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 	Set the desktop notification title template. Defaults to "YubiKey is waiting for a touch".
 
 *-notify-body* _body_
-	Set the desktop notification body template. Defaults to "Touch your YubiKey to continue ({{.Reasons}})."
+	Set the desktop notification body template. Defaults to "Touch your YubiKey to continue ({{.Reasons}})." followed by _{{.Details}}_ on a new line.
 
 *-notify-urgency* _urgency_
 	Set the desktop notification urgency: low, normal, or critical. Defaults to "normal". Notification daemons typically keep critical notifications on screen until they are dismissed; the app closes its notification as soon as the touch is registered.
 
-The notification title and body use Go template syntax. _{{.Reasons}}_ expands to a sorted, comma-separated list of active event types: _gpg_, _hmac_, and _u2f_.
+*-exec-command* _command_
+	Start this shell command when a touch is required and terminate it once the touch is registered, e.g. a dialog window that stays visible until the YubiKey is touched. The command is run with *sh -c*; _{{.Reasons}}_ expands to the active event types and _{{.Details}}_ to the request details, e.g. the SSH host.
+
+The notification title and body use Go template syntax. _{{.Reasons}}_ expands to a sorted, comma-separated list of active event types: _gpg_, _hmac_, and _u2f_. _{{.Details}}_ describes the request, such as the SSH host (with IP and port) that is waiting for the touch; it is empty when unknown.
 
 *-no-socket*
 	Disable unix socket notifier.
@@ -61,6 +64,9 @@ _YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY_
 
 _YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY_
 	Equivalent to specifying *-notify-urgency*.
+
+_YUBIKEY_TOUCH_DETECTOR_EXEC_COMMAND_
+	Equivalent to specifying *-exec-command*.
 
 _YUBIKEY_TOUCH_DETECTOR_STDOUT_
 	Equivalent to specifying *-stdout*.

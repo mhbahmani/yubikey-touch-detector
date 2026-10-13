@@ -6,8 +6,11 @@ YUBIKEY_TOUCH_DETECTOR_NOTIFY=true
 
 # customize desktop notifications
 # YUBIKEY_TOUCH_DETECTOR_NOTIFY_TITLE="Security key required"
-# YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY="Touch your YubiKey to continue ({{.Reasons}})."
+# YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY="Touch your YubiKey to continue ({{.Reasons}}).{{with .Details}}\n{{.}}{{end}}"
 # YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY="critical"
+
+# run a command when a touch is required, terminate it when it is registered
+# YUBIKEY_TOUCH_DETECTOR_EXEC_COMMAND="zenity --info --title='YubiKey' --text='Touch your YubiKey' --no-wrap"
 
 # do not print notifications to stdout
 YUBIKEY_TOUCH_DETECTOR_STDOUT=false

@@ -74,13 +74,23 @@ The built-in title and body can be overridden independently:
 $ yubikey-touch-detector --notify --notify-title "Security key required: {{.Reasons}}" --notify-body "Touch your YubiKey to continue."
 ```
 
-The title and body are Go templates. `{{.Reasons}}` expands to a sorted, comma-separated list of the active event types (`gpg`, `hmac`, and `u2f`). It can be placed in either field or omitted. The default body is `Touch your YubiKey to continue ({{.Reasons}}).`, allowing notification daemons such as dunst to match the event type.
+The title and body are Go templates. `{{.Reasons}}` expands to a sorted, comma-separated list of the active event types (`gpg`, `hmac`, and `u2f`). `{{.Details}}` describes what the touch is for, such as the SSH host that requested it (`SSH to deploy@10.0.0.5 (10.0.0.5:22)`), and is empty when unknown. The default body is `Touch your YubiKey to continue ({{.Reasons}}).` followed by the details on a new line, allowing notification daemons such as dunst to match the event type.
 
 The notification urgency can also be set to `low`, `normal` (default), or `critical`. Most notification daemons keep `critical` notifications on screen until they are dismissed, and the app closes its notification as soon as the touch is registered, making this useful when the default banner is too easy to miss:
 
 ```
 $ yubikey-touch-detector --notify --notify-urgency critical
 ```
+
+#### External command on touch
+
+For stronger prompts, a command can be started when a touch is required and terminated once it is registered, e.g. a dialog window that stays on screen until the YubiKey is touched:
+
+```
+$ yubikey-touch-detector --exec-command "zenity --info --title='Touch your YubiKey' --text='{{.Reasons}}: {{.Details}}' --width=420 --no-wrap"
+```
+
+The command is run with `sh -c`, and `{{.Reasons}}` and `{{.Details}}` expand to the active event types and the request details. Details are stripped of shell metacharacters, but should still be placed inside quotes.
 
 #### Configuring the app
 
@@ -93,6 +103,7 @@ The app supports the following environment variables and CLI arguments (CLI args
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_TITLE` | `--notify-title` |
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY` | `--notify-body` |
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY` | `--notify-urgency` |
+| `YUBIKEY_TOUCH_DETECTOR_EXEC_COMMAND` | `--exec-command` |
 | `YUBIKEY_TOUCH_DETECTOR_STDOUT`    | `--stdout`    |
 | `YUBIKEY_TOUCH_DETECTOR_NOSOCKET`  | `--no-socket` |
 | `YUBIKEY_TOUCH_DETECTOR_DBUS`      | `--dbus`      |
