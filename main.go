@@ -38,6 +38,10 @@ func main() {
 	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY"); found {
 		notificationUrgency = value
 	}
+	execCommand := ""
+	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_EXEC_COMMAND"); found {
+		execCommand = value
+	}
 
 	var version bool
 	var verbose bool
@@ -53,6 +57,7 @@ func main() {
 	flag.StringVar(&notificationTitle, "notify-title", notificationTitle, "desktop notification title template")
 	flag.StringVar(&notificationBody, "notify-body", notificationBody, "desktop notification body template")
 	flag.StringVar(&notificationUrgency, "notify-urgency", notificationUrgency, "desktop notification urgency: low, normal, or critical")
+	flag.StringVar(&execCommand, "exec-command", execCommand, "start this command when a touch is required and terminate it when the touch is registered ({{.Reasons}} and {{.Details}} are expanded)")
 	flag.BoolVar(&stdout, "stdout", envStdout, "print notifications to stdout")
 	flag.BoolVar(&nosocket, "no-socket", envNosocket, "disable unix socket notifier")
 	flag.BoolVar(&dbus, "dbus", envDbus, "enable dbus server for IPC")
@@ -96,6 +101,9 @@ func main() {
 	}
 	if dbus {
 		go notifier.SetupDbusNotifier(notifiers)
+	}
+	if execCommand != "" {
+		go notifier.SetupExecNotifier(notifiers, execCommand)
 	}
 
 	initDetectors(notifiers, exits)
