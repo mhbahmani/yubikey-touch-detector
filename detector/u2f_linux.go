@@ -77,6 +77,7 @@ func WatchU2F(notifiers *sync.Map) {
 	watchers := make(map[string]uint64)
 	pendingWatchers := make(map[string]bool)
 	state := newU2FTouchState()
+	removers := make(map[uint64]func())
 	var nextWatcherID uint64
 
 	publish := func(message notifier.Message) {
@@ -121,8 +122,20 @@ func WatchU2F(notifiers *sync.Map) {
 		case devicePath := <-readyDevices:
 			startWatcher(devicePath)
 		case event := <-watcherEvents:
+			// Describe the request before publishing, so notifiers see it
+			if event.active {
+				if _, exists := removers[event.id]; !exists {
+					removers[event.id] = notifier.AddTouchContext(sshDetailForDevice(event.devicePath))
+				}
+			}
 			if message, changed := state.update(event.id, event.active); changed {
 				publish(message)
+			}
+			if !event.active {
+				if remove, exists := removers[event.id]; exists {
+					remove()
+					delete(removers, event.id)
+				}
 			}
 			if event.done && watchers[event.devicePath] == event.id {
 				delete(watchers, event.devicePath)

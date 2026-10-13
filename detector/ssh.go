@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/maximbaz/yubikey-touch-detector/notifier"
 )
 
 // WatchSSH watches for hints that YubiKey is maybe waiting for a touch on a SSH auth request
@@ -94,8 +96,23 @@ func WatchSSH(requestGPGCheck chan bool, exits *sync.Map) {
 			return
 		}
 
-		go proxyUnixSocket(proxyConnection, originalConnection, requestGPGCheck)
-		go proxyUnixSocket(originalConnection, proxyConnection, requestGPGCheck)
+		// Identify the client while its peer credentials are still available
+		remove := notifier.AddTouchContext(sshRequestDetail(proxyConnection))
+
+		done := make(chan bool, 2)
+		go func() {
+			proxyUnixSocket(proxyConnection, originalConnection, requestGPGCheck)
+			done <- true
+		}()
+		go func() {
+			proxyUnixSocket(originalConnection, proxyConnection, requestGPGCheck)
+			done <- true
+		}()
+		go func() {
+			<-done
+			<-done
+			remove()
+		}()
 	}
 }
 
