@@ -10,11 +10,18 @@ import (
 )
 
 const DefaultNotificationTitle = "YubiKey is waiting for a touch"
-const DefaultNotificationBody = "Touch your YubiKey to continue ({{.Reasons}})."
+const DefaultNotificationBody = "Touch your YubiKey to continue ({{.Reasons}}).{{with .Details}}\n{{.}}{{end}}"
 const DefaultNotificationUrgency = "normal"
 
 type notificationTemplateData struct {
+	// Reasons is a sorted, comma-separated list of active event types
 	Reasons string
+	// Details describes what the touch is for, e.g. "SSH to user@host (1.2.3.4:22)"
+	Details string
+}
+
+func newNotificationTemplateData(reasons string) notificationTemplateData {
+	return notificationTemplateData{Reasons: reasons, Details: touchDetails()}
 }
 
 type notificationTemplates struct {
@@ -35,7 +42,7 @@ func newNotificationTemplates(title, body string) (*notificationTemplates, error
 }
 
 func (templates *notificationTemplates) render(reasons string) (string, string, error) {
-	data := notificationTemplateData{Reasons: reasons}
+	data := newNotificationTemplateData(reasons)
 	var title bytes.Buffer
 	if err := templates.title.Execute(&title, data); err != nil {
 		return "", "", fmt.Errorf("rendering notification title: %w", err)
