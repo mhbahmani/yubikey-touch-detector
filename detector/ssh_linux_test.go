@@ -64,3 +64,19 @@ func TestParentPID(t *testing.T) {
 		t.Fatalf("parentPID(self) = %d, want %d", got, want)
 	}
 }
+
+func TestIsSSHAgentProcess(t *testing.T) {
+	for name, want := range map[string]bool{
+		"ssh-agent":       true,
+		"gcr-ssh-agent":   true,
+		"gnome-keyring-d": true,
+		"ssh-sk-helper":   true,
+		"firefox":         false,
+		"ssh":             false,
+		"":                false,
+	} {
+		if got := isSSHAgentProcess(name); got != want {
+			t.Fatalf("isSSHAgentProcess(%q) = %t, want %t", name, got, want)
+		}
+	}
+}

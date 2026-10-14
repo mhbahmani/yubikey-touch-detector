@@ -12,7 +12,7 @@ import (
 )
 
 // DefaultDetailsTemplate describes the request that is waiting for a touch
-const DefaultDetailsTemplate = "SSH to {{.Target}} ({{.Address}})"
+const DefaultDetailsTemplate = "{{if .Process}}requested by {{.Process}}{{else}}SSH to {{.Target}} ({{.Address}}){{end}}"
 
 // TouchContext describes the request that is waiting for a touch, e.g. the
 // SSH session that asked for a signature. The zero value means unknown.
@@ -21,6 +21,9 @@ type TouchContext struct {
 	Host string
 	IP   string
 	Port string
+	// Process names the application making the request when it is not ssh,
+	// e.g. a browser doing a WebAuthn operation
+	Process string
 }
 
 // DetailsData is the data available to the details template
@@ -33,6 +36,8 @@ type DetailsData struct {
 	IP string
 	// Port is the remote port, e.g. "22"
 	Port string
+	// Process names the requesting application, e.g. "firefox"
+	Process string
 	// Target is "user@host", or just the host when no user is known
 	Target string
 	// Address is "ip:port", or just the IP when no port is known
@@ -73,10 +78,11 @@ func SetDetailsTemplate(text string) error {
 // a function that removes it again. Empty contexts are ignored.
 func AddTouchContext(ctx TouchContext) (remove func()) {
 	ctx = TouchContext{
-		User: unsafeDetailChars.ReplaceAllString(ctx.User, ""),
-		Host: unsafeDetailChars.ReplaceAllString(ctx.Host, ""),
-		IP:   unsafeDetailChars.ReplaceAllString(ctx.IP, ""),
-		Port: unsafeDetailChars.ReplaceAllString(ctx.Port, ""),
+		User:    unsafeDetailChars.ReplaceAllString(ctx.User, ""),
+		Host:    unsafeDetailChars.ReplaceAllString(ctx.Host, ""),
+		IP:      unsafeDetailChars.ReplaceAllString(ctx.IP, ""),
+		Port:    unsafeDetailChars.ReplaceAllString(ctx.Port, ""),
+		Process: unsafeDetailChars.ReplaceAllString(ctx.Process, ""),
 	}
 	if ctx == (TouchContext{}) {
 		return func() {}
@@ -136,6 +142,7 @@ func newDetailsData(ctx TouchContext) DetailsData {
 		Host:    ctx.Host,
 		IP:      ctx.IP,
 		Port:    ctx.Port,
+		Process: ctx.Process,
 		Target:  target,
 		Address: address,
 	}

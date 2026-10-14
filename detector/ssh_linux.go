@@ -175,10 +175,11 @@ func decodeProcAddress(value string) (net.IP, uint16, bool) {
 	return ip, uint16(port), true
 }
 
-// sshDetailForDevice describes the ssh session that is talking to a FIDO
-// device directly, e.g. for an ed25519-sk key. The process holding the hidraw
-// node open is either ssh itself or its ssh-sk-helper child.
-func sshDetailForDevice(devicePath string) notifier.TouchContext {
+// touchContextForDevice describes the request that is talking to a FIDO
+// device directly. The process holding the hidraw node open is the ssh client
+// itself (ed25519-sk key), an SSH agent helper, or the application making the
+// request, e.g. a browser during a WebAuthn operation.
+func touchContextForDevice(devicePath string) notifier.TouchContext {
 	fds, err := filepath.Glob("/proc/[0-9]*/fd/*")
 	if err != nil {
 		return notifier.TouchContext{}
@@ -187,20 +188,48 @@ func sshDetailForDevice(devicePath string) notifier.TouchContext {
 		if target, err := os.Readlink(fd); err != nil || target != devicePath {
 			continue
 		}
-		pid, err := strconv.Atoi(strings.Split(fd, "/")[2])
+		holder, err := strconv.Atoi(strings.Split(fd, "/")[2])
 		if err != nil {
 			continue
 		}
-		for depth := 0; depth < 4 && pid > 1; depth++ {
+		for depth, pid := 0, holder; depth < 4 && pid > 1; depth, pid = depth+1, parentPID(pid) {
 			if ctx := describeSSHProcess(pid); ctx != (notifier.TouchContext{}) {
 				log.Debugf("Touch request on %s comes from %+v", devicePath, ctx)
 				return ctx
 			}
-			pid = parentPID(pid)
+			if isSSHAgentProcess(processName(pid)) {
+				// The key is used through an SSH agent; its client cannot be
+				// found from the device
+				log.Debugf("Touch request on %s goes through an SSH agent", devicePath)
+				return sshDetailForAgentRequest()
+			}
 		}
+		// The holder is the application itself, e.g. a browser; the agent
+		// fallback must not run here, it could blame an unrelated ssh session
+		log.Debugf("Touch request on %s comes from %s", devicePath, processName(holder))
+		return notifier.TouchContext{Process: processName(holder)}
 	}
-	log.Debugf("No ssh process found holding %s open, checking ssh sessions using an agent", devicePath)
+	log.Debugf("No process found holding %s open, checking ssh sessions using an agent", devicePath)
 	return sshDetailForAgentRequest()
+}
+
+// processName reads the name of a process from /proc/<pid>/comm
+func processName(pid int) string {
+	comm, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(comm))
+}
+
+// isSSHAgentProcess reports whether a process name belongs to an SSH agent or
+// its security key helper
+func isSSHAgentProcess(name string) bool {
+	switch name {
+	case "ssh-agent", "gcr-ssh-agent", "gnome-keyring-d", "ssh-sk-helper":
+		return true
+	}
+	return false
 }
 
 // sshDetailForAgentRequest handles security keys used through an SSH agent.

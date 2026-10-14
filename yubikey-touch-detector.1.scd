@@ -23,7 +23,7 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 	Set the desktop notification urgency: low, normal, or critical. Defaults to "normal". Notification daemons typically keep critical notifications on screen until they are dismissed; the app closes its notification as soon as the touch is registered.
 
 *-details-template* _template_
-	Go template describing the request that waits for a touch, e.g. the SSH session. Defaults to "SSH to {{.Target}} ({{.Address}})". Available fields: _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, _{{.Port}}_, _{{.Target}}_ (user@host), and _{{.Address}}_ (ip:port). SSH details are detected on Linux only.
+	Go template describing the request that waits for a touch, e.g. the SSH session. Defaults to "SSH to {{.Target}} ({{.Address}})" for ssh requests and "requested by {{.Process}}" otherwise, e.g. for a browser making a WebAuthn request. Available fields: _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, _{{.Port}}_, _{{.Target}}_ (user@host), _{{.Address}}_ (ip:port), and _{{.Process}}_ (the requesting application). SSH details are detected on Linux only.
 
 *-exec-command* _command_
 	Start this shell command when a touch is required and terminate it once the touch is registered, e.g. a dialog window that stays visible until the YubiKey is touched. The command is run with *sh -c*; _{{.Reasons}}_ expands to the active event types and _{{.Details}}_ to the request details, e.g. the SSH host.

@@ -87,3 +87,22 @@ func TestInvalidDetailsTemplateIsRejected(t *testing.T) {
 		t.Fatal("SetDetailsTemplate accepted an invalid template")
 	}
 }
+
+func TestProcessOnlyContext(t *testing.T) {
+	remove := AddTouchContext(TouchContext{Process: "firefox"})
+	defer remove()
+
+	if got := touchDetails(); got != "requested by firefox" {
+		t.Fatalf("touchDetails() = %q, want %q", got, "requested by firefox")
+	}
+}
+
+func TestProcessIsSanitized(t *testing.T) {
+	remove := AddTouchContext(TouchContext{Process: "fire'fox$(id)"})
+	defer remove()
+
+	// Parentheses are kept for the "(ip:port)" format, so templates should quote {{.Details}}
+	if got := touchDetails(); got != "requested by firefox(id)" {
+		t.Fatalf("touchDetails() = %q, unsafe characters were not removed", got)
+	}
+}

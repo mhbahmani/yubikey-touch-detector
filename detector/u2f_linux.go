@@ -125,7 +125,7 @@ func WatchU2F(notifiers *sync.Map) {
 			// Describe the request before publishing, so notifiers see it
 			if event.active {
 				if _, exists := removers[event.id]; !exists {
-					removers[event.id] = notifier.AddTouchContext(sshDetailForDevice(event.devicePath))
+					removers[event.id] = notifier.AddTouchContext(touchContextForDevice(event.devicePath))
 				}
 			}
 			if message, changed := state.update(event.id, event.active); changed {
