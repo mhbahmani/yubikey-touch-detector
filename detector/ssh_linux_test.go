@@ -4,6 +4,8 @@ import (
 	"net"
 	"os"
 	"testing"
+
+	"github.com/maximbaz/yubikey-touch-detector/notifier"
 )
 
 func TestParseSSHTarget(t *testing.T) {
@@ -52,8 +54,8 @@ func TestDecodeProcAddress(t *testing.T) {
 
 func TestDescribeSSHProcessIgnoresNonSSH(t *testing.T) {
 	// The current test binary is not named ssh, so no detail must be produced
-	if detail := describeSSHProcess(0); detail != "" {
-		t.Fatalf("describeSSHProcess(0) = %q, want empty", detail)
+	if ctx := describeSSHProcess(0); ctx != (notifier.TouchContext{}) {
+		t.Fatalf("describeSSHProcess(0) = %+v, want empty", ctx)
 	}
 }
 

@@ -9,25 +9,25 @@ import (
 	"strconv"
 	"strings"
 
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/maximbaz/yubikey-touch-detector/notifier"
 )
 
 // sshOptionsWithValue lists ssh flags that consume the following argument
 const sshOptionsWithValue = "BbcDEeFIiJLlmOoPpQRSWw"
 
-// sshRequestDetail describes the ssh client connected to the agent socket,
-// e.g. "SSH to user@host (1.2.3.4:22)". It returns an empty string when the
-// client cannot be identified as ssh.
-func sshRequestDetail(conn net.Conn) string {
+// sshRequestDetail describes the ssh client connected to the agent socket.
+// It returns the zero value when the client cannot be identified as ssh.
+func sshRequestDetail(conn net.Conn) notifier.TouchContext {
 	unixConn, ok := conn.(*net.UnixConn)
 	if !ok {
-		return ""
+		return notifier.TouchContext{}
 	}
 	raw, err := unixConn.SyscallConn()
 	if err != nil {
-		return ""
+		return notifier.TouchContext{}
 	}
 
 	var cred *unix.Ucred
@@ -35,35 +35,37 @@ func sshRequestDetail(conn net.Conn) string {
 	if err := raw.Control(func(fd uintptr) {
 		cred, credErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
 	}); err != nil || credErr != nil {
-		return ""
+		return notifier.TouchContext{}
 	}
 
 	return describeSSHProcess(int(cred.Pid))
 }
 
-func describeSSHProcess(pid int) string {
+// describeSSHProcess reads the user, host, and remote address of an ssh process
+func describeSSHProcess(pid int) notifier.TouchContext {
 	argv, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
 	if err != nil {
-		return ""
+		return notifier.TouchContext{}
 	}
 	args := strings.Split(strings.TrimRight(string(argv), "\x00"), "\x00")
 	if len(args) == 0 || filepath.Base(args[0]) != "ssh" {
-		return ""
+		return notifier.TouchContext{}
 	}
 
-	target := parseSSHTarget(args[1:])
-	address := remoteAddress(pid)
-
-	switch {
-	case target != "" && address != "":
-		return fmt.Sprintf("SSH to %s (%s)", target, address)
-	case address != "":
-		return fmt.Sprintf("SSH to %s", address)
-	case target != "":
-		return fmt.Sprintf("SSH to %s", target)
-	default:
-		return "SSH"
+	user, host := splitSSHTarget(parseSSHTarget(args[1:]))
+	var ip, port string
+	if address := remoteAddress(pid); address != "" {
+		ip, port, _ = net.SplitHostPort(address)
 	}
+	return notifier.TouchContext{User: user, Host: host, IP: ip, Port: port}
+}
+
+// splitSSHTarget splits "user@host" into its parts
+func splitSSHTarget(target string) (user, host string) {
+	if i := strings.LastIndex(target, "@"); i >= 0 {
+		return target[:i], target[i+1:]
+	}
+	return "", target
 }
 
 // parseSSHTarget returns "user@host" (or just "host") from ssh arguments
@@ -176,10 +178,10 @@ func decodeProcAddress(value string) (net.IP, uint16, bool) {
 // sshDetailForDevice describes the ssh session that is talking to a FIDO
 // device directly, e.g. for an ed25519-sk key. The process holding the hidraw
 // node open is either ssh itself or its ssh-sk-helper child.
-func sshDetailForDevice(devicePath string) string {
+func sshDetailForDevice(devicePath string) notifier.TouchContext {
 	fds, err := filepath.Glob("/proc/[0-9]*/fd/*")
 	if err != nil {
-		return ""
+		return notifier.TouchContext{}
 	}
 	for _, fd := range fds {
 		if target, err := os.Readlink(fd); err != nil || target != devicePath {
@@ -190,9 +192,9 @@ func sshDetailForDevice(devicePath string) string {
 			continue
 		}
 		for depth := 0; depth < 4 && pid > 1; depth++ {
-			if detail := describeSSHProcess(pid); detail != "" {
-				log.Debugf("Touch request on %s comes from %s", devicePath, detail)
-				return detail
+			if ctx := describeSSHProcess(pid); ctx != (notifier.TouchContext{}) {
+				log.Debugf("Touch request on %s comes from %+v", devicePath, ctx)
+				return ctx
 			}
 			pid = parentPID(pid)
 		}
@@ -207,12 +209,12 @@ func sshDetailForDevice(devicePath string) string {
 // device. Instead, look for ssh clients that use an agent and have a live TCP
 // connection. A host is only reported when exactly one such session exists,
 // so the wrong address is never shown.
-func sshDetailForAgentRequest() string {
+func sshDetailForAgentRequest() notifier.TouchContext {
 	procs, err := filepath.Glob("/proc/[0-9]*/cmdline")
 	if err != nil {
-		return ""
+		return notifier.TouchContext{}
 	}
-	details := make(map[string]bool)
+	details := make(map[notifier.TouchContext]bool)
 	for _, proc := range procs {
 		argv, err := os.ReadFile(proc)
 		if err != nil {
@@ -228,19 +230,19 @@ func sshDetailForAgentRequest() string {
 		if err != nil || !usesSSHAgent(pid) || !hasOpenUnixSocket(pid) {
 			continue
 		}
-		if detail := describeSSHProcess(pid); strings.Contains(detail, "(") {
-			details[detail] = true
+		if ctx := describeSSHProcess(pid); ctx.IP != "" {
+			details[ctx] = true
 		}
 	}
 	if len(details) != 1 {
 		log.Debugf("Found %d ssh sessions using an SSH agent with a live connection", len(details))
-		return ""
+		return notifier.TouchContext{}
 	}
-	for detail := range details {
-		log.Debugf("Touch request comes from %s (via SSH agent)", detail)
-		return detail
+	for ctx := range details {
+		log.Debugf("Touch request comes from %+v (via SSH agent)", ctx)
+		return ctx
 	}
-	return ""
+	return notifier.TouchContext{}
 }
 
 // usesSSHAgent reports whether the process environment sets SSH_AUTH_SOCK
