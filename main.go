@@ -18,6 +18,13 @@ import (
 var version = "$Format:%(describe)$"
 
 func main() {
+	// Built-in touch dialog, e.g. launched through --exec-command so the
+	// dialog ships with the installed binary instead of a user script
+	if len(os.Args) > 1 && os.Args[1] == "popup" {
+		showPopup(os.Args[2:])
+		return
+	}
+
 	truthyValues := map[string]bool{"true": true, "yes": true, "1": true}
 
 	envVerbose := truthyValues[strings.ToLower(os.Getenv("YUBIKEY_TOUCH_DETECTOR_VERBOSE"))]
