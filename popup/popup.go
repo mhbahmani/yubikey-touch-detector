@@ -35,6 +35,9 @@ var (
 	colReason     = nrgba(0xcb, 0xd5, 0xe1, 0xff)
 	colAccent     = nrgba(0x4a, 0xde, 0x80, 0xff)
 	colAccentBg   = nrgba(0x4a, 0xde, 0x80, 0x38)
+	colChipBg     = nrgba(0x4a, 0xde, 0x80, 0x26)
+	colChipBorder = nrgba(0x4a, 0xde, 0x80, 0x59)
+	colChipText   = nrgba(0x86, 0xef, 0xac, 0xff)
 	colFooter     = nrgba(0x94, 0xa3, 0xb8, 0xff)
 )
 
@@ -190,20 +193,25 @@ func drawText(gtx layout.Context, theme *material.Theme, waitingOn, details stri
 				return layout.Dimensions{}
 			}
 			return layout.Stack{}.Layout(gtx,
+				// Pill with a hairline border so it stands out from the card
 				layout.Expanded(func(gtx layout.Context) layout.Dimensions {
-					chip := clip.UniformRRect(image.Rectangle{Max: gtx.Constraints.Min}, gtx.Dp(unit.Dp(8)))
-					paint.FillShape(gtx.Ops, colAccentBg, chip.Op(gtx.Ops))
-					return layout.Dimensions{Size: gtx.Constraints.Min}
+					bounds := image.Rectangle{Max: gtx.Constraints.Min}
+					radius := min(gtx.Dp(unit.Dp(12)), bounds.Max.Y/2)
+					chip := clip.UniformRRect(bounds, radius)
+					paint.FillShape(gtx.Ops, colChipBg, chip.Op(gtx.Ops))
+					border := clip.Stroke{Path: chip.Path(gtx.Ops), Width: float32(gtx.Dp(1))}
+					paint.FillShape(gtx.Ops, colChipBorder, border.Op())
+					return layout.Dimensions{Size: bounds.Max}
 				}),
 				layout.Stacked(func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{
-						Top: unit.Dp(6), Bottom: unit.Dp(6),
-						Left: unit.Dp(10), Right: unit.Dp(10),
+						Top: unit.Dp(5), Bottom: unit.Dp(5),
+						Left: unit.Dp(12), Right: unit.Dp(12),
 					}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						// Monospace so host names and addresses are easy to read
 						host := material.Label(theme, unit.Sp(13), details)
 						host.Font = font.Font{Typeface: "monospace"}
-						host.Color = colAccent
+						host.Color = colChipText
 						return host.Layout(gtx)
 					})
 				}),
