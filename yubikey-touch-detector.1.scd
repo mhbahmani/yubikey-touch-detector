@@ -25,8 +25,8 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 *-details-template* _template_
 	Go template describing the request that waits for a touch, e.g. the SSH session. Defaults to "SSH to {{.Target}} ({{.Address}})" for ssh requests and "requested by {{.Process}}" otherwise, e.g. for a browser making a WebAuthn request. Available fields: _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, _{{.Port}}_, _{{.Target}}_ (user@host), _{{.Address}}_ (ip:port), and _{{.Process}}_ (the requesting application). SSH details are detected on Linux only.
 
-*-exec-command* _command_
-	Start this shell command when a touch is required and terminate it once the touch is registered, e.g. a dialog window that stays visible until the YubiKey is touched. The command is run with *sh -c*; _{{.Reasons}}_ expands to the active event types and _{{.Details}}_ to the request details, e.g. the SSH host.
+*-popup*
+	Show the built-in touch dialog (Linux only) while a touch is required.
 
 The notification title and body use Go template syntax. _{{.Reasons}}_ expands to a sorted, comma-separated list of active event types: _gpg_, _hmac_, and _u2f_. _{{.Details}}_ describes the request, such as the SSH host (with IP and port) that is waiting for the touch; it is empty when unknown. Its format is set with *-details-template*.
 
@@ -48,7 +48,7 @@ The notification title and body use Go template syntax. _{{.Reasons}}_ expands t
 # POPUP
 
 *popup* [_reason_] [_details_]
-	Show the built-in touch dialog (Linux only) until the process is terminated, e.g. through *-exec-command* as in `yubikey-touch-detector popup "{{.Reasons}}" "{{.Details}}"`.
+	Show the built-in touch dialog (Linux only) until the process is terminated. Started by the app itself when *-popup* is given; not normally called by hand.
 
 # DESCRIPTION
 
@@ -73,8 +73,8 @@ _YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY_
 _YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY_
 	Equivalent to specifying *-notify-urgency*.
 
-_YUBIKEY_TOUCH_DETECTOR_EXEC_COMMAND_
-	Equivalent to specifying *-exec-command*.
+_YUBIKEY_TOUCH_DETECTOR_POPUP_
+	Equivalent to specifying *-popup*.
 
 _YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE_
 	Equivalent to specifying *-details-template*.

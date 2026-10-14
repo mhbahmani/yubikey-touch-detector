@@ -82,21 +82,15 @@ The notification urgency can also be set to `low`, `normal` (default), or `criti
 $ yubikey-touch-detector --notify --notify-urgency critical
 ```
 
-#### External command on touch
+#### Touch dialog
 
-For stronger prompts, a command can be started when a touch is required and terminated once it is registered, e.g. a dialog window that stays on screen until the YubiKey is touched:
-
-```
-$ yubikey-touch-detector --exec-command "zenity --info --title='Touch your YubiKey' --text='{{.Reasons}}: {{.Details}}' --width=420 --no-wrap"
-```
-
-The command is run with `sh -c`, and `{{.Reasons}}` and `{{.Details}}` expand to the active event types and the request details. Details are stripped of shell metacharacters, but should still be placed inside quotes.
-
-On Linux the binary itself ships a built-in dialog, so no external script is needed:
+For a stronger prompt than a notification, the app can show a dialog window that stays on screen until the YubiKey is touched:
 
 ```
-$ yubikey-touch-detector --exec-command "yubikey-touch-detector popup \"{{.Reasons}}\" \"{{.Details}}\""
+$ yubikey-touch-detector --popup
 ```
+
+The dialog is built into the binary (Linux only) and shows what the touch is for, e.g. the SSH host that requested it.
 
 #### Configuring the app
 
@@ -109,7 +103,7 @@ The app supports the following environment variables and CLI arguments (CLI args
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_TITLE` | `--notify-title` |
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY` | `--notify-body` |
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY` | `--notify-urgency` |
-| `YUBIKEY_TOUCH_DETECTOR_EXEC_COMMAND` | `--exec-command` |
+| `YUBIKEY_TOUCH_DETECTOR_POPUP` | `--popup` |
 | `YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE` | `--details-template` |
 | `YUBIKEY_TOUCH_DETECTOR_STDOUT`    | `--stdout`    |
 | `YUBIKEY_TOUCH_DETECTOR_NOSOCKET`  | `--no-socket` |

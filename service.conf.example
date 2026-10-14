@@ -9,11 +9,11 @@ YUBIKEY_TOUCH_DETECTOR_NOTIFY=true
 # YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY="Touch your YubiKey to continue ({{.Reasons}}).{{with .Details}}\n{{.}}{{end}}"
 # YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY="critical"
 
-# run a command when a touch is required, terminate it when it is registered
+# show a dialog window while a touch is required (Linux only)
+# YUBIKEY_TOUCH_DETECTOR_POPUP=true
+
 # describe the request that waits for a touch; fields: User, Host, IP, Port, Target, Address, Process
 # YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE="SSH to {{.Target}} ({{.Address}})"
-
-# YUBIKEY_TOUCH_DETECTOR_EXEC_COMMAND="zenity --info --title='YubiKey' --text='Touch your YubiKey' --no-wrap"
 
 # do not print notifications to stdout
 YUBIKEY_TOUCH_DETECTOR_STDOUT=false

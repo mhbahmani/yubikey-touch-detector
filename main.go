@@ -33,6 +33,7 @@ func main() {
 	envStdout := truthyValues[strings.ToLower(os.Getenv("YUBIKEY_TOUCH_DETECTOR_STDOUT"))]
 	envNosocket := truthyValues[strings.ToLower(os.Getenv("YUBIKEY_TOUCH_DETECTOR_NOSOCKET"))]
 	envDbus := truthyValues[strings.ToLower(os.Getenv("YUBIKEY_TOUCH_DETECTOR_DBUS"))]
+	envPopup := truthyValues[strings.ToLower(os.Getenv("YUBIKEY_TOUCH_DETECTOR_POPUP"))]
 	notificationTitle := notifier.DefaultNotificationTitle
 	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_NOTIFY_TITLE"); found {
 		notificationTitle = value
@@ -49,10 +50,6 @@ func main() {
 	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE"); found {
 		detailsTemplate = value
 	}
-	execCommand := ""
-	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_EXEC_COMMAND"); found {
-		execCommand = value
-	}
 
 	var version bool
 	var verbose bool
@@ -60,6 +57,7 @@ func main() {
 	var stdout bool
 	var nosocket bool
 	var dbus bool
+	var popup bool
 
 	flag.BoolVar(&version, "version", false, "print version and exit")
 	flag.BoolVar(&verbose, "v", envVerbose, "enable debug logging")
@@ -69,10 +67,10 @@ func main() {
 	flag.StringVar(&notificationBody, "notify-body", notificationBody, "desktop notification body template")
 	flag.StringVar(&notificationUrgency, "notify-urgency", notificationUrgency, "desktop notification urgency: low, normal, or critical")
 	flag.StringVar(&detailsTemplate, "details-template", detailsTemplate, "describe the request waiting for a touch, e.g. \"SSH to {{.Target}} ({{.Address}})\". Fields: {{.User}}, {{.Host}}, {{.IP}}, {{.Port}}, {{.Target}} (user@host), {{.Address}} (ip:port), {{.Process}} (requesting app)")
-	flag.StringVar(&execCommand, "exec-command", execCommand, "start this command when a touch is required and terminate it when the touch is registered ({{.Reasons}} and {{.Details}} are expanded)")
 	flag.BoolVar(&stdout, "stdout", envStdout, "print notifications to stdout")
 	flag.BoolVar(&nosocket, "no-socket", envNosocket, "disable unix socket notifier")
 	flag.BoolVar(&dbus, "dbus", envDbus, "enable dbus server for IPC")
+	flag.BoolVar(&popup, "popup", envPopup, "show the built-in touch dialog while a touch is required (Linux only)")
 	flag.Parse()
 
 	if err := notifier.SetDetailsTemplate(detailsTemplate); err != nil {
@@ -118,8 +116,8 @@ func main() {
 	if dbus {
 		go notifier.SetupDbusNotifier(notifiers)
 	}
-	if execCommand != "" {
-		go notifier.SetupExecNotifier(notifiers, execCommand)
+	if popup {
+		go notifier.SetupPopupNotifier(notifiers)
 	}
 
 	initDetectors(notifiers, exits)
