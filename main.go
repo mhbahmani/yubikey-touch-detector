@@ -38,6 +38,10 @@ func main() {
 	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY"); found {
 		notificationUrgency = value
 	}
+	detailsTemplate := notifier.DefaultDetailsTemplate
+	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE"); found {
+		detailsTemplate = value
+	}
 	execCommand := ""
 	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_EXEC_COMMAND"); found {
 		execCommand = value
@@ -57,11 +61,16 @@ func main() {
 	flag.StringVar(&notificationTitle, "notify-title", notificationTitle, "desktop notification title template")
 	flag.StringVar(&notificationBody, "notify-body", notificationBody, "desktop notification body template")
 	flag.StringVar(&notificationUrgency, "notify-urgency", notificationUrgency, "desktop notification urgency: low, normal, or critical")
+	flag.StringVar(&detailsTemplate, "details-template", detailsTemplate, "describe the request waiting for a touch, e.g. \"SSH to {{.Target}} ({{.Address}})\". Fields: {{.User}}, {{.Host}}, {{.IP}}, {{.Port}}, {{.Target}} (user@host), {{.Address}} (ip:port)")
 	flag.StringVar(&execCommand, "exec-command", execCommand, "start this command when a touch is required and terminate it when the touch is registered ({{.Reasons}} and {{.Details}} are expanded)")
 	flag.BoolVar(&stdout, "stdout", envStdout, "print notifications to stdout")
 	flag.BoolVar(&nosocket, "no-socket", envNosocket, "disable unix socket notifier")
 	flag.BoolVar(&dbus, "dbus", envDbus, "enable dbus server for IPC")
 	flag.Parse()
+
+	if err := notifier.SetDetailsTemplate(detailsTemplate); err != nil {
+		log.Fatal(err)
+	}
 
 	if version {
 		fmt.Println("YubiKey touch detector version:", appVersion())
