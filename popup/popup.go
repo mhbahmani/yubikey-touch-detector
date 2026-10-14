@@ -70,19 +70,26 @@ func Run(reason, details string) {
 	window := new(app.Window)
 	window.Option(
 		app.Title("YubiKey touch required"),
-		app.Size(unit.Dp(460), unit.Dp(200)),
+		app.Size(unit.Dp(460), unit.Dp(210)),
 		app.Decorated(false),
 	)
 
 	go func() {
 		var ops op.Ops
+		var height int
 		for {
 			switch event := window.Event().(type) {
 			case app.DestroyEvent:
 				os.Exit(0)
 			case app.FrameEvent:
 				gtx := app.NewContext(&ops, event)
-				draw(gtx, theme, reasonText(reason), details)
+				size := draw(gtx, theme, reasonText(reason), details)
+				// Let the dialog grow or shrink with its content, e.g. when
+				// the reason text wraps to a second line
+				if abs(size.Y-height) > 2 {
+					height = size.Y
+					window.Option(app.Size(unit.Dp(460), gtx.Metric.PxToDp(size.Y)))
+				}
 				event.Frame(&ops)
 			}
 		}
@@ -103,11 +110,16 @@ func Run(reason, details string) {
 	app.Main()
 }
 
-func draw(gtx layout.Context, theme *material.Theme, waitingOn, details string) layout.Dimensions {
+// draw paints the dialog and returns the natural content size, with the
+// card centered in the window
+func draw(gtx layout.Context, theme *material.Theme, waitingOn, details string) image.Point {
 	// Window background
 	paint.FillShape(gtx.Ops, colBackground, clip.Rect{Max: gtx.Constraints.Max}.Op())
 
-	return layout.UniformInset(unit.Dp(20)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	// Lay out the card at its natural size, then center it in the window
+	gtx.Constraints.Min = image.Point{}
+	macro := op.Record(gtx.Ops)
+	dims := layout.UniformInset(unit.Dp(20)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Stack{}.Layout(gtx,
 			// Card background and border
 			layout.Expanded(func(gtx layout.Context) layout.Dimensions {
@@ -136,6 +148,20 @@ func draw(gtx layout.Context, theme *material.Theme, waitingOn, details string) 
 			}),
 		)
 	})
+	call := macro.Stop()
+
+	window := gtx.Constraints.Max
+	center := op.Offset(image.Pt((window.X-dims.Size.X)/2, (window.Y-dims.Size.Y)/2)).Push(gtx.Ops)
+	call.Add(gtx.Ops)
+	center.Pop()
+	return dims.Size
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // drawRing renders the green ring marking the active touch state, with a
