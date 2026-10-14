@@ -45,6 +45,11 @@ The notification title and body use Go template syntax. _{{.Reasons}}_ expands t
 *-version*
 	Print version information and exit.
 
+# POPUP
+
+*popup* [_reason_] [_details_]
+	Show the built-in touch dialog (Linux only) until the process is terminated, e.g. through *-exec-command* as in `yubikey-touch-detector popup "{{.Reasons}}" "{{.Details}}"`.
+
 # DESCRIPTION
 
 *yubikey-touch-detector* detects when a YubiKey is waiting for a touch

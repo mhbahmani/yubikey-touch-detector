@@ -92,6 +92,12 @@ $ yubikey-touch-detector --exec-command "zenity --info --title='Touch your YubiK
 
 The command is run with `sh -c`, and `{{.Reasons}}` and `{{.Details}}` expand to the active event types and the request details. Details are stripped of shell metacharacters, but should still be placed inside quotes.
 
+On Linux the binary itself ships a built-in dialog, so no external script is needed:
+
+```
+$ yubikey-touch-detector --exec-command "yubikey-touch-detector popup \"{{.Reasons}}\" \"{{.Details}}\""
+```
+
 #### Configuring the app
 
 The app supports the following environment variables and CLI arguments (CLI args take precedence):
