@@ -184,12 +184,17 @@ func touchContextForDevice(devicePath string) notifier.TouchContext {
 	if err != nil {
 		return notifier.TouchContext{}
 	}
+	self := os.Getpid()
 	for _, fd := range fds {
 		if target, err := os.Readlink(fd); err != nil || target != devicePath {
 			continue
 		}
 		holder, err := strconv.Atoi(strings.Split(fd, "/")[2])
 		if err != nil {
+			continue
+		}
+		// The detector itself holds the device open to watch for touches
+		if holder == self {
 			continue
 		}
 		for depth, pid := 0, holder; depth < 4 && pid > 1; depth, pid = depth+1, parentPID(pid) {
