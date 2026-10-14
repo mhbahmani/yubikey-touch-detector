@@ -16,7 +16,6 @@ import (
 
 	"gioui.org/app"
 	"gioui.org/font"
-	"gioui.org/font/gofont"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -34,8 +33,8 @@ var (
 	colBorder     = nrgba(0x1e, 0x29, 0x3b, 0xff)
 	colTitle      = nrgba(0xf8, 0xfa, 0xfc, 0xff)
 	colReason     = nrgba(0xcb, 0xd5, 0xe1, 0xff)
-	colAccent     = nrgba(0x22, 0xc5, 0x94, 0xff)
-	colAccentBg   = nrgba(0x22, 0xc5, 0x94, 0x2e)
+	colAccent     = nrgba(0x4a, 0xde, 0x80, 0xff)
+	colAccentBg   = nrgba(0x4a, 0xde, 0x80, 0x38)
 	colFooter     = nrgba(0x94, 0xa3, 0xb8, 0xff)
 )
 
@@ -61,8 +60,9 @@ func reasonText(reason string) string {
 // returns while the window is open; the detector ends it with SIGTERM once
 // the touch is registered.
 func Run(reason, details string) {
+	// Use the system fonts, matching the look of native dialogs
 	theme := material.NewTheme()
-	theme.Shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
+	theme.Shaper = text.NewShaper()
 
 	window := new(app.Window)
 	window.Option(
@@ -144,11 +144,11 @@ func drawRing(gtx layout.Context) layout.Dimensions {
 
 	ring := clip.Ellipse(bounds)
 	paint.FillShape(gtx.Ops, colAccentBg, ring.Op(gtx.Ops))
-	stroke := clip.Stroke{Path: ring.Path(gtx.Ops), Width: float32(gtx.Dp(2))}
+	stroke := clip.Stroke{Path: ring.Path(gtx.Ops), Width: float32(gtx.Dp(3))}
 	paint.FillShape(gtx.Ops, colAccent, stroke.Op())
 
 	// Key glyph centered in the ring
-	keySize := gtx.Dp(unit.Dp(24))
+	keySize := gtx.Dp(unit.Dp(26))
 	centered := op.Offset(image.Pt((size-keySize)/2, (size-keySize)/2)).Push(gtx.Ops)
 	drawKey(gtx, keySize)
 	centered.Pop()
@@ -175,7 +175,8 @@ func drawKey(gtx layout.Context, size int) layout.Dimensions {
 func drawText(gtx layout.Context, theme *material.Theme, waitingOn, details string) layout.Dimensions {
 	return layout.Flex{Axis: layout.Vertical, Gap: gtx.Dp(unit.Dp(4))}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			title := material.H6(theme, "Touch your YubiKey")
+			title := material.Label(theme, unit.Sp(20), "Touch your YubiKey")
+			title.Font.Weight = font.SemiBold
 			title.Color = colTitle
 			return title.Layout(gtx)
 		}),
@@ -201,7 +202,7 @@ func drawText(gtx layout.Context, theme *material.Theme, waitingOn, details stri
 					}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						// Monospace so host names and addresses are easy to read
 						host := material.Label(theme, unit.Sp(13), details)
-						host.Font = font.Font{Typeface: "Go Mono"}
+						host.Font = font.Font{Typeface: "monospace"}
 						host.Color = colAccent
 						return host.Layout(gtx)
 					})
