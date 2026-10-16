@@ -9,8 +9,14 @@ package popup
 import (
 	"image"
 	"image/color"
+	_ "image/png"
+	"io/fs"
+	"math"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +28,7 @@ import (
 	"gioui.org/op/paint"
 	"gioui.org/text"
 	"gioui.org/unit"
+	"gioui.org/widget"
 	"gioui.org/widget/material"
 )
 
@@ -65,6 +72,7 @@ func Run(reason, details string) {
 	// Use the system fonts, matching the look of native dialogs
 	theme := material.NewTheme()
 	theme.Shaper = text.NewShaper()
+	icon := loadThemeIcon()
 
 	window := new(app.Window)
 	window.Option(
@@ -82,7 +90,7 @@ func Run(reason, details string) {
 				os.Exit(0)
 			case app.FrameEvent:
 				gtx := app.NewContext(&ops, event)
-				size := draw(gtx, theme, reasonText(reason), details)
+				size := draw(gtx, theme, icon, reasonText(reason), details)
 				// Let the dialog grow or shrink with its content, e.g. when
 				// the reason text wraps to a second line
 				if abs(size.Y-height) > 2 {
@@ -111,7 +119,7 @@ func Run(reason, details string) {
 
 // draw paints the dialog and returns the natural content size, with the
 // card centered in the window
-func draw(gtx layout.Context, theme *material.Theme, waitingOn, details string) image.Point {
+func draw(gtx layout.Context, theme *material.Theme, icon image.Image, waitingOn, details string) image.Point {
 	// Window background
 	paint.FillShape(gtx.Ops, colBackground, clip.Rect{Max: gtx.Constraints.Max}.Op())
 
@@ -137,7 +145,7 @@ func draw(gtx layout.Context, theme *material.Theme, waitingOn, details string) 
 						Alignment: layout.Middle,
 					}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return drawRing(gtx)
+							return drawRing(gtx, icon)
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							return drawText(gtx, theme, waitingOn, details)
@@ -163,9 +171,10 @@ func abs(v int) int {
 	return v
 }
 
-// drawRing renders the green ring marking the active touch state, with a
-// simple key glyph in its center
-func drawRing(gtx layout.Context) layout.Dimensions {
+// drawRing renders the green ring marking the active touch state, with the
+// themed icon (or a drawn key as fallback) in its center
+func drawRing(gtx layout.Context, icon image.Image) layout.Dimensions {
+	keyGlyphSize := gtx.Dp(unit.Dp(26))
 	size := gtx.Dp(unit.Dp(68))
 	radius := size/2 - gtx.Dp(2)
 	bounds := image.Rect(size/2-radius, size/2-radius, size/2+radius, size/2+radius)
@@ -175,10 +184,19 @@ func drawRing(gtx layout.Context) layout.Dimensions {
 	stroke := clip.Stroke{Path: ring.Path(gtx.Ops), Width: float32(gtx.Dp(2))}
 	paint.FillShape(gtx.Ops, colAccent, stroke.Op())
 
-	// Key glyph centered in the ring
-	keySize := gtx.Dp(unit.Dp(26))
-	centered := op.Offset(image.Pt((size-keySize)/2, (size-keySize)/2)).Push(gtx.Ops)
-	drawKey(gtx, keySize)
+	// Themed icon (or key glyph) centered in the ring
+	inner := keyGlyphSize
+	if icon != nil {
+		inner = gtx.Dp(unit.Dp(40))
+	}
+	centered := op.Offset(image.Pt((size-inner)/2, (size-inner)/2)).Push(gtx.Ops)
+	if icon != nil {
+		imageWidget := widget.Image{Src: paint.NewImageOp(icon), Fit: widget.Fill, Position: layout.Center}
+		gtx.Constraints = layout.Exact(image.Pt(inner, inner))
+		imageWidget.Layout(gtx)
+	} else {
+		drawKey(gtx, keyGlyphSize)
+	}
 	centered.Pop()
 	return layout.Dimensions{Size: image.Pt(size, size)}
 }
@@ -248,6 +266,75 @@ func drawText(gtx layout.Context, theme *material.Theme, waitingOn, details stri
 	)
 }
 
+// nrgba prepares a palette color for display. When the Wayland surface is
+// not sRGB, the renderer's linear-light output is shown unencoded and every
+// color appears darker and desaturated; encoding the palette once more
+// compensates for the missing conversion.
 func nrgba(r, g, b, a uint8) color.NRGBA {
-	return color.NRGBA{R: r, G: g, B: b, A: a}
+	return color.NRGBA{R: srgbEncode(r), G: srgbEncode(g), B: srgbEncode(b), A: a}
+}
+
+// srgbEncode applies the sRGB transfer function to an 8-bit channel value
+func srgbEncode(v uint8) uint8 {
+	x := float64(v) / 255
+	if x <= 0.0031308 {
+		return uint8(math.Round(x * 12.92 * 255))
+	}
+	return uint8(math.Round((1.055*math.Pow(x, 1.0/2.4) - 0.055) * 255))
+}
+
+// loadThemeIcon looks for a PNG of a themed icon, mirroring the icon lookup
+// of the GTK dialog this replaces. It returns nil when no PNG exists.
+func loadThemeIcon() image.Image {
+	var dirs []string
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".local/share/icons"))
+	}
+	dirs = append(dirs, "/usr/share/icons", "/usr/share/pixmaps")
+
+	for _, name := range []string{"yubikey-touch-detector", "security-high", "dialog-password"} {
+		bestPath, bestDist := "", 1<<30
+		for _, dir := range dirs {
+			filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+				if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".png") {
+					return nil
+				}
+				if strings.TrimSuffix(entry.Name(), ".png") != name {
+					return nil
+				}
+				size, ok := iconDirSize(path)
+				if !ok {
+					return nil
+				}
+				dist := size - 48
+				if dist < 0 {
+					dist = -dist
+				}
+				if dist < bestDist {
+					bestPath, bestDist = path, dist
+				}
+				return nil
+			})
+		}
+		if bestPath != "" {
+			if file, err := os.Open(bestPath); err == nil {
+				defer file.Close()
+				if img, _, err := image.Decode(file); err == nil {
+					return img
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// iconDirSize reads the pixel size from an icon path such as
+// /usr/share/icons/Theme/48x48/status/dialog-password.png
+func iconDirSize(path string) (int, bool) {
+	dir := filepath.Base(filepath.Dir(filepath.Dir(path)))
+	if i := strings.IndexByte(dir, 'x'); i > 0 {
+		dir = dir[:i]
+	}
+	size, err := strconv.Atoi(dir)
+	return size, err == nil
 }
