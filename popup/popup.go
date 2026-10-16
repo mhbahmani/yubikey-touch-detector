@@ -33,11 +33,10 @@ var (
 	colBorder     = nrgba(0x1e, 0x29, 0x3b, 0xff)
 	colTitle      = nrgba(0xf8, 0xfa, 0xfc, 0xff)
 	colReason     = nrgba(0xcb, 0xd5, 0xe1, 0xff)
-	colAccent     = nrgba(0x4a, 0xde, 0x80, 0xff)
-	colAccentBg   = nrgba(0x4a, 0xde, 0x80, 0x38)
-	colChipBg     = nrgba(0x4a, 0xde, 0x80, 0x26)
-	colChipBorder = nrgba(0x4a, 0xde, 0x80, 0x59)
-	colChipText   = nrgba(0x86, 0xef, 0xac, 0xff)
+	colAccent     = nrgba(0x22, 0xc5, 0x94, 0xff)
+	colAccentBg   = nrgba(0x22, 0xc5, 0x94, 0x1f)
+	colChipBg     = nrgba(0x22, 0xc5, 0x94, 0x1a)
+	colChipText   = nrgba(0x22, 0xc5, 0x94, 0xff)
 	colFooter     = nrgba(0x94, 0xa3, 0xb8, 0xff)
 )
 
@@ -173,7 +172,7 @@ func drawRing(gtx layout.Context) layout.Dimensions {
 
 	ring := clip.Ellipse(bounds)
 	paint.FillShape(gtx.Ops, colAccentBg, ring.Op(gtx.Ops))
-	stroke := clip.Stroke{Path: ring.Path(gtx.Ops), Width: float32(gtx.Dp(3))}
+	stroke := clip.Stroke{Path: ring.Path(gtx.Ops), Width: float32(gtx.Dp(2))}
 	paint.FillShape(gtx.Ops, colAccent, stroke.Op())
 
 	// Key glyph centered in the ring
@@ -225,8 +224,6 @@ func drawText(gtx layout.Context, theme *material.Theme, waitingOn, details stri
 					radius := min(gtx.Dp(unit.Dp(12)), bounds.Max.Y/2)
 					chip := clip.UniformRRect(bounds, radius)
 					paint.FillShape(gtx.Ops, colChipBg, chip.Op(gtx.Ops))
-					border := clip.Stroke{Path: chip.Path(gtx.Ops), Width: float32(gtx.Dp(1))}
-					paint.FillShape(gtx.Ops, colChipBorder, border.Op())
 					return layout.Dimensions{Size: bounds.Max}
 				}),
 				layout.Stacked(func(gtx layout.Context) layout.Dimensions {
