@@ -1,26 +1,18 @@
 //go:build linux
 
-// Package popup shows a persistent dialog while the YubiKey is waiting for a
-// touch. It is invoked as a subcommand of the detector binary, e.g. through
-// --exec-command, so the dialog code ships with the installed binary instead
-// of a user-writable script.
+// Package popup displays the built-in YubiKey touch dialog.
 package popup
 
 import (
 	"image"
 	"image/color"
-	_ "image/png"
-	"io/fs"
-	"math"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
 	"gioui.org/app"
+	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/op"
@@ -28,22 +20,19 @@ import (
 	"gioui.org/op/paint"
 	"gioui.org/text"
 	"gioui.org/unit"
-	"gioui.org/widget"
 	"gioui.org/widget/material"
 )
 
-// Palette follows the ui-ux-pro-max "Dark Mode (OLED)" entry, matching the
-// design of the GTK dialog this package replaces.
 var (
 	colBackground = nrgba(0x02, 0x06, 0x17, 0xff)
 	colCard       = nrgba(0x0e, 0x12, 0x23, 0xff)
 	colBorder     = nrgba(0x1e, 0x29, 0x3b, 0xff)
 	colTitle      = nrgba(0xf8, 0xfa, 0xfc, 0xff)
 	colReason     = nrgba(0xcb, 0xd5, 0xe1, 0xff)
-	colAccent     = nrgba(0x22, 0xc5, 0x94, 0xff)
-	colAccentBg   = nrgba(0x22, 0xc5, 0x94, 0x1f)
-	colChipBg     = nrgba(0x22, 0xc5, 0x94, 0x1a)
-	colChipText   = nrgba(0x22, 0xc5, 0x94, 0xff)
+	colAccent     = nrgba(0x22, 0xc5, 0x5e, 0xff)
+	colKey        = nrgba(0xf8, 0xfa, 0xfc, 0xff)
+	colRingBg     = nrgba(0x10, 0x28, 0x2a, 0xff)
+	colChipBg     = nrgba(0x10, 0x24, 0x29, 0xff)
 	colFooter     = nrgba(0x94, 0xa3, 0xb8, 0xff)
 )
 
@@ -51,7 +40,6 @@ var (
 // without terminating this process
 const safetyTimeout = 120 * time.Second
 
-// reasonText describes the active event types, matching the notification wording
 func reasonText(reason string) string {
 	switch reason {
 	case "u2f":
@@ -69,15 +57,13 @@ func reasonText(reason string) string {
 // returns while the window is open; the detector ends it with SIGTERM once
 // the touch is registered.
 func Run(reason, details string) {
-	// Use the system fonts, matching the look of native dialogs
 	theme := material.NewTheme()
 	theme.Shaper = text.NewShaper()
-	icon := loadThemeIcon()
 
 	window := new(app.Window)
 	window.Option(
 		app.Title("YubiKey touch required"),
-		app.Size(unit.Dp(460), unit.Dp(210)),
+		app.Size(unit.Dp(440), unit.Dp(232)),
 		app.Decorated(false),
 	)
 
@@ -90,12 +76,11 @@ func Run(reason, details string) {
 				os.Exit(0)
 			case app.FrameEvent:
 				gtx := app.NewContext(&ops, event)
-				size := draw(gtx, theme, icon, reasonText(reason), details)
-				// Let the dialog grow or shrink with its content, e.g. when
-				// the reason text wraps to a second line
+				size := draw(gtx, theme, reasonText(reason), details)
+				// Resize when text wrapping changes the natural height.
 				if abs(size.Y-height) > 2 {
 					height = size.Y
-					window.Option(app.Size(unit.Dp(460), gtx.Metric.PxToDp(size.Y)))
+					window.Option(app.Size(unit.Dp(440), gtx.Metric.PxToDp(size.Y)))
 				}
 				event.Frame(&ops)
 			}
@@ -117,18 +102,13 @@ func Run(reason, details string) {
 	app.Main()
 }
 
-// draw paints the dialog and returns the natural content size, with the
-// card centered in the window
-func draw(gtx layout.Context, theme *material.Theme, icon image.Image, waitingOn, details string) image.Point {
-	// Window background
+func draw(gtx layout.Context, theme *material.Theme, waitingOn, details string) image.Point {
 	paint.FillShape(gtx.Ops, colBackground, clip.Rect{Max: gtx.Constraints.Max}.Op())
 
-	// Lay out the card at its natural size, then center it in the window
 	gtx.Constraints.Min = image.Point{}
 	macro := op.Record(gtx.Ops)
 	dims := layout.UniformInset(unit.Dp(20)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Stack{}.Layout(gtx,
-			// Card background and border
 			layout.Expanded(func(gtx layout.Context) layout.Dimensions {
 				bounds := image.Rectangle{Max: gtx.Constraints.Min}
 				card := clip.UniformRRect(bounds, gtx.Dp(unit.Dp(16)))
@@ -145,7 +125,7 @@ func draw(gtx layout.Context, theme *material.Theme, icon image.Image, waitingOn
 						Alignment: layout.Middle,
 					}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return drawRing(gtx, icon)
+							return drawRing(gtx)
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							return drawText(gtx, theme, waitingOn, details)
@@ -171,63 +151,55 @@ func abs(v int) int {
 	return v
 }
 
-// drawRing renders the green ring marking the active touch state, with the
-// themed icon (or a drawn key as fallback) in its center
-func drawRing(gtx layout.Context, icon image.Image) layout.Dimensions {
-	keyGlyphSize := gtx.Dp(unit.Dp(26))
-	size := gtx.Dp(unit.Dp(68))
-	radius := size/2 - gtx.Dp(2)
-	bounds := image.Rect(size/2-radius, size/2-radius, size/2+radius, size/2+radius)
-
-	ring := clip.Ellipse(bounds)
-	paint.FillShape(gtx.Ops, colAccentBg, ring.Op(gtx.Ops))
-	stroke := clip.Stroke{Path: ring.Path(gtx.Ops), Width: float32(gtx.Dp(2))}
-	paint.FillShape(gtx.Ops, colAccent, stroke.Op())
-
-	// Themed icon (or key glyph) centered in the ring
-	inner := keyGlyphSize
-	if icon != nil {
-		inner = gtx.Dp(unit.Dp(40))
-	}
-	centered := op.Offset(image.Pt((size-inner)/2, (size-inner)/2)).Push(gtx.Ops)
-	if icon != nil {
-		imageWidget := widget.Image{Src: paint.NewImageOp(icon), Fit: widget.Fill, Position: layout.Center}
-		gtx.Constraints = layout.Exact(image.Pt(inner, inner))
-		imageWidget.Layout(gtx)
-	} else {
-		drawKey(gtx, keyGlyphSize)
-	}
-	centered.Pop()
+func drawRing(gtx layout.Context) layout.Dimensions {
+	size := gtx.Dp(unit.Dp(72))
+	drawKey(gtx, size)
 	return layout.Dimensions{Size: image.Pt(size, size)}
 }
 
-// drawKey renders a simple key: a round bow and a straight shaft
-func drawKey(gtx layout.Context, size int) layout.Dimensions {
-	col := colAccent
+// Coordinates use a 144x144 design grid.
+func drawKey(gtx layout.Context, size int) {
+	ops := gtx.Ops
+	s := float32(size) / 144
+	pt := func(x, y float32) f32.Point { return f32.Pt(x*s, y*s) }
 
-	bowRadius := size / 6
-	bow := image.Rect(size/4-bowRadius, size/2-bowRadius, size/4+bowRadius, size/2+bowRadius)
-	bowShape := clip.Ellipse(bow)
-	bowStroke := clip.Stroke{Path: bowShape.Path(gtx.Ops), Width: float32(gtx.Dp(3))}
-	paint.FillShape(gtx.Ops, col, bowStroke.Op())
+	paint.FillShape(ops, colRingBg, clip.Ellipse{Max: image.Pt(size, size)}.Op(ops))
 
-	shaftHeight := gtx.Dp(3)
-	shaft := image.Rect(size/2, size/2-shaftHeight, size, size/2+shaftHeight)
-	paint.FillShape(gtx.Ops, col, clip.UniformRRect(shaft, shaftHeight).Op(gtx.Ops))
+	inset := int(2 * s)
+	ring := clip.Ellipse{Min: image.Pt(inset, inset), Max: image.Pt(size-inset, size-inset)}
+	paint.FillShape(ops, colAccent, clip.Stroke{Path: ring.Path(ops), Width: 4 * s}.Op())
 
-	return layout.Dimensions{Size: image.Pt(size, size)}
+	head := clip.Ellipse{Min: image.Pt(int(34*s), int(55*s)), Max: image.Pt(int(68*s), int(89*s))}
+	paint.FillShape(ops, colKey, clip.Stroke{Path: head.Path(ops), Width: 4.5 * s}.Op())
+	paint.FillShape(ops, colKey, clip.Ellipse{
+		Min: image.Pt(int(40*s), int(67*s)),
+		Max: image.Pt(int(48*s), int(75*s)),
+	}.Op(ops))
+
+	var key clip.Path
+	key.Begin(ops)
+	key.MoveTo(pt(68, 65))
+	key.LineTo(pt(100, 65))
+	key.LineTo(pt(109, 72))
+	key.LineTo(pt(100, 81))
+	key.LineTo(pt(95, 76))
+	key.LineTo(pt(90, 81))
+	key.LineTo(pt(85, 76))
+	key.LineTo(pt(80, 81))
+	key.LineTo(pt(69, 81))
+	paint.FillShape(ops, colKey, clip.Stroke{Path: key.End(), Width: 4.5 * s}.Op())
 }
 
 func drawText(gtx layout.Context, theme *material.Theme, waitingOn, details string) layout.Dimensions {
 	return layout.Flex{Axis: layout.Vertical, Gap: gtx.Dp(unit.Dp(4))}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			title := material.Label(theme, unit.Sp(20), "Touch your YubiKey")
-			title.Font.Weight = font.SemiBold
+			title := material.Label(theme, unit.Sp(22.7), "Touch your YubiKey")
+			title.Font.Weight = font.Bold
 			title.Color = colTitle
 			return title.Layout(gtx)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			reason := material.Body1(theme, waitingOn+" on the touch sensor.")
+			reason := material.Label(theme, unit.Sp(14.7), waitingOn+" on the touch sensor.")
 			reason.Color = colReason
 			return reason.Layout(gtx)
 		}),
@@ -235,106 +207,36 @@ func drawText(gtx layout.Context, theme *material.Theme, waitingOn, details stri
 			if details == "" {
 				return layout.Dimensions{}
 			}
-			return layout.Stack{}.Layout(gtx,
-				// Pill with a hairline border so it stands out from the card
-				layout.Expanded(func(gtx layout.Context) layout.Dimensions {
-					bounds := image.Rectangle{Max: gtx.Constraints.Min}
-					radius := min(gtx.Dp(unit.Dp(12)), bounds.Max.Y/2)
-					chip := clip.UniformRRect(bounds, radius)
-					paint.FillShape(gtx.Ops, colChipBg, chip.Op(gtx.Ops))
-					return layout.Dimensions{Size: bounds.Max}
-				}),
-				layout.Stacked(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{
-						Top: unit.Dp(5), Bottom: unit.Dp(5),
-						Left: unit.Dp(12), Right: unit.Dp(12),
-					}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						// Monospace so host names and addresses are easy to read
-						host := material.Label(theme, unit.Sp(13), details)
-						host.Font = font.Font{Typeface: "monospace"}
-						host.Color = colChipText
-						return host.Layout(gtx)
-					})
-				}),
-			)
+			return layout.Inset{Top: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Stack{}.Layout(gtx,
+					layout.Expanded(func(gtx layout.Context) layout.Dimensions {
+						bounds := image.Rectangle{Max: gtx.Constraints.Min}
+						chip := clip.UniformRRect(bounds, gtx.Dp(unit.Dp(8)))
+						paint.FillShape(gtx.Ops, colChipBg, chip.Op(gtx.Ops))
+						return layout.Dimensions{Size: bounds.Max}
+					}),
+					layout.Stacked(func(gtx layout.Context) layout.Dimensions {
+						return layout.Inset{
+							Top: unit.Dp(6), Bottom: unit.Dp(6),
+							Left: unit.Dp(10), Right: unit.Dp(10),
+						}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							host := material.Label(theme, unit.Sp(14), details)
+							host.Font = font.Font{Typeface: "monospace"}
+							host.Color = colAccent
+							return host.Layout(gtx)
+						})
+					}),
+				)
+			})
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			footer := material.Label(theme, unit.Sp(12), "This window closes automatically once the key is touched.")
+			footer := material.Label(theme, unit.Sp(12.7), "This window closes automatically once the key is touched.")
 			footer.Color = colFooter
 			return layout.Inset{Top: unit.Dp(8)}.Layout(gtx, footer.Layout)
 		}),
 	)
 }
 
-// nrgba prepares a palette color for display. When the Wayland surface is
-// not sRGB, the renderer's linear-light output is shown unencoded and every
-// color appears darker and desaturated; encoding the palette once more
-// compensates for the missing conversion.
 func nrgba(r, g, b, a uint8) color.NRGBA {
-	return color.NRGBA{R: srgbEncode(r), G: srgbEncode(g), B: srgbEncode(b), A: a}
-}
-
-// srgbEncode applies the sRGB transfer function to an 8-bit channel value
-func srgbEncode(v uint8) uint8 {
-	x := float64(v) / 255
-	if x <= 0.0031308 {
-		return uint8(math.Round(x * 12.92 * 255))
-	}
-	return uint8(math.Round((1.055*math.Pow(x, 1.0/2.4) - 0.055) * 255))
-}
-
-// loadThemeIcon looks for a PNG of a themed icon, mirroring the icon lookup
-// of the GTK dialog this replaces. It returns nil when no PNG exists.
-func loadThemeIcon() image.Image {
-	var dirs []string
-	if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, ".local/share/icons"))
-	}
-	dirs = append(dirs, "/usr/share/icons", "/usr/share/pixmaps")
-
-	for _, name := range []string{"yubikey-touch-detector", "security-high", "dialog-password"} {
-		bestPath, bestDist := "", 1<<30
-		for _, dir := range dirs {
-			filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
-				if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".png") {
-					return nil
-				}
-				if strings.TrimSuffix(entry.Name(), ".png") != name {
-					return nil
-				}
-				size, ok := iconDirSize(path)
-				if !ok {
-					return nil
-				}
-				dist := size - 48
-				if dist < 0 {
-					dist = -dist
-				}
-				if dist < bestDist {
-					bestPath, bestDist = path, dist
-				}
-				return nil
-			})
-		}
-		if bestPath != "" {
-			if file, err := os.Open(bestPath); err == nil {
-				defer file.Close()
-				if img, _, err := image.Decode(file); err == nil {
-					return img
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// iconDirSize reads the pixel size from an icon path such as
-// /usr/share/icons/Theme/48x48/status/dialog-password.png
-func iconDirSize(path string) (int, bool) {
-	dir := filepath.Base(filepath.Dir(filepath.Dir(path)))
-	if i := strings.IndexByte(dir, 'x'); i > 0 {
-		dir = dir[:i]
-	}
-	size, err := strconv.Atoi(dir)
-	return size, err == nil
+	return color.NRGBA{R: r, G: g, B: b, A: a}
 }
