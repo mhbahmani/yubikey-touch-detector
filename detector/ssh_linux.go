@@ -259,9 +259,10 @@ func sshDetailForAgentRequest() notifier.TouchContext {
 			continue
 		}
 		pid, err := strconv.Atoi(strings.Split(proc, "/")[2])
-		// Only a session that is talking to the agent right now has an open
-		// unix socket; idle sessions have closed it after authenticating
-		if err != nil || !usesSSHAgent(pid) || !hasOpenUnixSocket(pid) {
+		if err != nil {
+			continue
+		}
+		if sshAgentSocket(pid) == "" || !hasOpenUnixSocket(pid) {
 			continue
 		}
 		if ctx := describeSSHProcess(pid); ctx.IP != "" {
@@ -279,18 +280,18 @@ func sshDetailForAgentRequest() notifier.TouchContext {
 	return notifier.TouchContext{}
 }
 
-// usesSSHAgent reports whether the process environment sets SSH_AUTH_SOCK
-func usesSSHAgent(pid int) bool {
+func sshAgentSocket(pid int) string {
 	env, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
 	if err != nil {
-		return false
+		return ""
 	}
+	const prefix = "SSH_AUTH_SOCK="
 	for _, entry := range strings.Split(string(env), "\x00") {
-		if strings.HasPrefix(entry, "SSH_AUTH_SOCK=") && len(entry) > len("SSH_AUTH_SOCK=") {
-			return true
+		if strings.HasPrefix(entry, prefix) {
+			return strings.TrimPrefix(entry, prefix)
 		}
 	}
-	return false
+	return ""
 }
 
 // parentPID reads the parent process ID from /proc/<pid>/stat
@@ -311,21 +312,25 @@ func parentPID(pid int) int {
 	return ppid
 }
 
-// hasOpenUnixSocket reports whether pid holds an open unix socket, which is
-// how ssh talks to an agent during authentication
+// hasOpenUnixSocket reports whether pid holds a connected unix stream socket,
+// which is how an ssh client talks to its agent during authentication.
+// Connected sockets show no path in /proc/net/unix, so any connected stream
+// socket counts; the SSH_AUTH_SOCK check already ensures the session uses
+// an agent.
 func hasOpenUnixSocket(pid int) bool {
 	inodes := socketInodes(pid)
 	if len(inodes) == 0 {
 		return false
 	}
-	content, err := os.ReadFile("/proc/net/unix")
+	content, err := os.ReadFile(fmt.Sprintf("/proc/%d/net/unix", pid))
 	if err != nil {
 		return false
 	}
 	for _, line := range strings.Split(string(content), "\n")[1:] {
 		fields := strings.Fields(line)
-		// The inode is the seventh field
-		if len(fields) >= 7 && inodes[fields[6]] {
+		// Num RefCount Protocol Flags Type St Inode [Path]; Type 0001 is
+		// SOCK_STREAM and St 03 is connected
+		if len(fields) >= 7 && inodes[fields[6]] && fields[4] == "0001" && fields[5] == "03" {
 			return true
 		}
 	}
