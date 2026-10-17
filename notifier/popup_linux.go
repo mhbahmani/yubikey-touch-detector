@@ -21,7 +21,30 @@ func SetupPopupNotifier(notifiers *sync.Map) {
 
 	state := newTouchState()
 	var running *exec.Cmd
+	var restart bool
 	exited := make(chan *exec.Cmd, 1)
+	start := func() {
+		self, err := os.Executable()
+		if err != nil {
+			log.Error("Cannot find this binary to launch the touch dialog: ", err)
+			return
+		}
+
+		cmd := exec.Command(self, "popup", state.reasons(), touchDetails())
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := cmd.Start(); err != nil {
+			log.Error("Cannot launch the touch dialog: ", err)
+			return
+		}
+		running = cmd
+
+		go func() {
+			if err := cmd.Wait(); err != nil {
+				log.Debugf("Touch dialog exited: %v", err)
+			}
+			exited <- cmd
+		}()
+	}
 
 	for {
 		var value Message
@@ -29,35 +52,24 @@ func SetupPopupNotifier(notifiers *sync.Map) {
 		case cmd := <-exited:
 			if running == cmd {
 				running = nil
+				if restart && len(state.active) > 0 {
+					restart = false
+					start()
+				}
 			}
 			continue
 		case value = <-touch:
 		}
 
 		wasActive, isActive, _ := state.update(value)
-		if isActive && !wasActive && running == nil {
-			self, err := os.Executable()
-			if err != nil {
-				log.Error("Cannot find this binary to launch the touch dialog: ", err)
-				continue
+		if isActive && !wasActive {
+			if running == nil {
+				start()
+			} else {
+				restart = true
 			}
-
-			cmd := exec.Command(self, "popup", state.reasons(), touchDetails())
-			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-			if err := cmd.Start(); err != nil {
-				log.Error("Cannot launch the touch dialog: ", err)
-				continue
-			}
-			running = cmd
-
-			go func() {
-				if err := cmd.Wait(); err != nil {
-					log.Debugf("Touch dialog exited: %v", err)
-				}
-				exited <- cmd
-			}()
 		} else if !isActive && wasActive && running != nil {
-			// Terminate the whole process group so the dialog dies cleanly
+			restart = false
 			if err := syscall.Kill(-running.Process.Pid, syscall.SIGTERM); err != nil {
 				log.Error("Cannot close the touch dialog: ", err)
 			}
