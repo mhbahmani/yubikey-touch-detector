@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"net"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -12,7 +11,7 @@ import (
 )
 
 // DefaultDetailsTemplate describes the request that is waiting for a touch
-const DefaultDetailsTemplate = "{{if .Process}}requested by {{.Process}}{{else}}SSH to {{.Target}} ({{.Address}}){{end}}"
+const DefaultDetailsTemplate = "{{if .Process}}requested by {{.Process}}{{else}}SSH to {{.Target}}{{with .Address}} ({{.}}){{end}}{{end}}"
 
 // TouchContext describes the request that is waiting for a touch, e.g. the
 // SSH session that asked for a signature. The zero value means unknown.
@@ -28,19 +27,12 @@ type TouchContext struct {
 
 // DetailsData is the data available to the details template
 type DetailsData struct {
-	// User is the login name, e.g. "alice"
-	User string
-	// Host is the host as typed, e.g. "prod-db" or "10.0.0.5"
-	Host string
-	// IP is the address the connection goes to
-	IP string
-	// Port is the remote port, e.g. "22"
-	Port string
-	// Process names the requesting application, e.g. "firefox"
+	User    string
+	Host    string
+	IP      string
+	Port    string
 	Process string
-	// Target is "user@host", or just the host when no user is known
-	Target string
-	// Address is "ip:port", or just the IP when no port is known
+	Target  string
 	Address string
 }
 
@@ -56,10 +48,6 @@ var touchContexts = struct {
 	entries:  make(map[uint64]TouchContext),
 	template: template.Must(template.New("details").Parse(DefaultDetailsTemplate)),
 }
-
-// unsafeDetailChars removes anything that could break out of a shell argument
-// when a detected value is substituted into --exec-command.
-var unsafeDetailChars = regexp.MustCompile(`[^A-Za-z0-9 .,_@:\[\]()/-]`)
 
 // SetDetailsTemplate sets the template that describes each request, e.g.
 // "SSH to {{.Target}} ({{.Address}})"
@@ -77,14 +65,7 @@ func SetDetailsTemplate(text string) error {
 // AddTouchContext records the request that is waiting for a touch and returns
 // a function that removes it again. Empty contexts are ignored.
 func AddTouchContext(ctx TouchContext) (remove func()) {
-	ctx = TouchContext{
-		User:    unsafeDetailChars.ReplaceAllString(ctx.User, ""),
-		Host:    unsafeDetailChars.ReplaceAllString(ctx.Host, ""),
-		IP:      unsafeDetailChars.ReplaceAllString(ctx.IP, ""),
-		Port:    unsafeDetailChars.ReplaceAllString(ctx.Port, ""),
-		Process: unsafeDetailChars.ReplaceAllString(ctx.Process, ""),
-	}
-	if ctx == (TouchContext{}) {
+	if ctx.Process == "" && ctx.Host == "" && ctx.IP == "" {
 		return func() {}
 	}
 
@@ -130,11 +111,11 @@ func newDetailsData(ctx TouchContext) DetailsData {
 		host = ctx.IP
 	}
 	target := host
-	if ctx.User != "" {
+	if ctx.User != "" && host != "" {
 		target = ctx.User + "@" + host
 	}
 	address := ctx.IP
-	if ctx.Port != "" {
+	if ctx.IP != "" && ctx.Port != "" {
 		address = net.JoinHostPort(ctx.IP, ctx.Port)
 	}
 	return DetailsData{

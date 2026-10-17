@@ -32,12 +32,12 @@ func TestEmptyTouchContextIsIgnored(t *testing.T) {
 	}
 }
 
-func TestTouchContextValuesAreSanitized(t *testing.T) {
-	remove := AddTouchContext(TouchContext{User: "a;b", Host: "x$(rm -rf ~)'`id`", IP: "10.0.0.5", Port: "22"})
+func TestTouchContextValuesArePreserved(t *testing.T) {
+	remove := AddTouchContext(TouchContext{Process: "Firefox β"})
 	defer remove()
 
-	if got := touchDetails(); got != "SSH to ab@x(rm -rf )id (10.0.0.5:22)" {
-		t.Fatalf("touchDetails() = %q, unsafe characters were not removed", got)
+	if got := touchDetails(); got != "requested by Firefox β" {
+		t.Fatalf("touchDetails() = %q, want process name unchanged", got)
 	}
 }
 
@@ -82,6 +82,15 @@ func TestHostFallsBackToIPInTarget(t *testing.T) {
 	}
 }
 
+func TestMissingAddressIsOmitted(t *testing.T) {
+	remove := AddTouchContext(TouchContext{User: "alice", Host: "example.com"})
+	defer remove()
+
+	if got := touchDetails(); got != "SSH to alice@example.com" {
+		t.Fatalf("touchDetails() = %q", got)
+	}
+}
+
 func TestInvalidDetailsTemplateIsRejected(t *testing.T) {
 	if err := SetDetailsTemplate("{{.User"); err == nil {
 		t.Fatal("SetDetailsTemplate accepted an invalid template")
@@ -94,15 +103,5 @@ func TestProcessOnlyContext(t *testing.T) {
 
 	if got := touchDetails(); got != "requested by firefox" {
 		t.Fatalf("touchDetails() = %q, want %q", got, "requested by firefox")
-	}
-}
-
-func TestProcessIsSanitized(t *testing.T) {
-	remove := AddTouchContext(TouchContext{Process: "fire'fox$(id)"})
-	defer remove()
-
-	// Parentheses are kept for the "(ip:port)" format, so templates should quote {{.Details}}
-	if got := touchDetails(); got != "requested by firefox(id)" {
-		t.Fatalf("touchDetails() = %q, unsafe characters were not removed", got)
 	}
 }
