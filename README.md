@@ -76,6 +76,10 @@ $ yubikey-touch-detector --notify --notify-title "Security key required: {{.Reas
 
 The title and body are Go templates. `{{.Reasons}}` expands to a sorted, comma-separated list of the active event types (`gpg`, `hmac`, and `u2f`). `{{.Details}}` describes what the touch is for, such as the SSH host that requested it (`SSH to deploy@10.0.0.5 (10.0.0.5:22)`), and is empty when unknown. Its format is set with `--details-template`, which accepts `{{.User}}`, `{{.Host}}`, `{{.IP}}`, `{{.Port}}`, `{{.Target}}` (`user@host`), `{{.Address}}` (`ip:port`), and `{{.Process}}`, which names the requesting application when it is not ssh, e.g. `requested by firefox` for a browser WebAuthn request. SSH details are detected on Linux only. The default body is `Touch your YubiKey to continue ({{.Reasons}}).` followed by the details on a new line, allowing notification daemons such as dunst to match the event type.
 
+When SSH clients descend from `ansible` or `ansible-playbook`, `{{.Ansible}}` is true and `{{.Target}}` contains a bullet list of server IPs. The default details format shows `Ansible to:` followed by this list, one server per line. If several authentications share an agent, all candidates must be identified as Ansible before this label is used; the list describes pending destinations, not which request the current touch will satisfy.
+
+For other concurrent SSH authentications, `{{.Target}}` lists the possible addresses prefixed with `one of`; the individual user, host, IP, port, and address fields remain empty.
+
 The notification urgency can also be set to `low`, `normal` (default), or `critical`. Most notification daemons keep `critical` notifications on screen until they are dismissed, and the app closes its notification as soon as the touch is registered, making this useful when the default banner is too easy to miss:
 
 ```

@@ -11,7 +11,7 @@ import (
 )
 
 // DefaultDetailsTemplate describes the request that is waiting for a touch
-const DefaultDetailsTemplate = "{{if .Process}}requested by {{.Process}}{{else}}SSH to {{.Target}}{{with .Address}} ({{.}}){{end}}{{end}}"
+const DefaultDetailsTemplate = "{{if .Ansible}}Ansible to:\n{{.Target}}{{else if .Process}}requested by {{.Process}}{{else}}SSH to {{.Target}}{{with .Address}} ({{.}}){{end}}{{end}}"
 
 // TouchContext describes the request that is waiting for a touch, e.g. the
 // SSH session that asked for a signature. The zero value means unknown.
@@ -23,6 +23,9 @@ type TouchContext struct {
 	// Process names the application making the request when it is not ssh,
 	// e.g. a browser doing a WebAuthn operation
 	Process string
+	// SSHCandidates lists possible destinations when a shared agent has concurrent requests.
+	SSHCandidates string
+	Ansible       bool
 }
 
 // DetailsData is the data available to the details template
@@ -34,6 +37,7 @@ type DetailsData struct {
 	Process string
 	Target  string
 	Address string
+	Ansible bool
 }
 
 // touchContexts tracks the requests that are waiting for a touch. Detectors
@@ -65,7 +69,7 @@ func SetDetailsTemplate(text string) error {
 // AddTouchContext records the request that is waiting for a touch and returns
 // a function that removes it again. Empty contexts are ignored.
 func AddTouchContext(ctx TouchContext) (remove func()) {
-	if ctx.Process == "" && ctx.Host == "" && ctx.IP == "" {
+	if ctx.Process == "" && ctx.Host == "" && ctx.IP == "" && ctx.SSHCandidates == "" {
 		return func() {}
 	}
 
@@ -114,6 +118,19 @@ func newDetailsData(ctx TouchContext) DetailsData {
 	if ctx.User != "" && host != "" {
 		target = ctx.User + "@" + host
 	}
+	if target == "" && ctx.SSHCandidates != "" {
+		target = "one of " + ctx.SSHCandidates
+	}
+	if ctx.Ansible {
+		if ctx.SSHCandidates != "" {
+			target = "- " + strings.ReplaceAll(ctx.SSHCandidates, "\n", "\n- ")
+		} else {
+			target = "- " + host
+			if ctx.IP != "" {
+				target = "- " + ctx.IP
+			}
+		}
+	}
 	address := ctx.IP
 	if ctx.IP != "" && ctx.Port != "" {
 		address = net.JoinHostPort(ctx.IP, ctx.Port)
@@ -126,5 +143,6 @@ func newDetailsData(ctx TouchContext) DetailsData {
 		Process: ctx.Process,
 		Target:  target,
 		Address: address,
+		Ansible: ctx.Ansible,
 	}
 }

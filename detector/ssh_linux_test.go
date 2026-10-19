@@ -3,6 +3,8 @@ package detector
 import (
 	"net"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/maximbaz/yubikey-touch-detector/notifier"
@@ -77,6 +79,78 @@ func TestIsSSHAgentProcess(t *testing.T) {
 	} {
 		if got := isSSHAgentProcess(name); got != want {
 			t.Fatalf("isSSHAgentProcess(%q) = %t, want %t", name, got, want)
+		}
+	}
+}
+
+func TestSSHAgentRequestContext(t *testing.T) {
+	first := notifier.TouchContext{Host: "worker-a", IP: "10.60.12.129", Port: "22"}
+	second := notifier.TouchContext{Host: "worker-b", IP: "10.60.12.130", Port: "22"}
+	third := notifier.TouchContext{Host: "worker-c", IP: "10.60.12.132", Port: "22"}
+	ansibleFirst, ansibleSecond := first, second
+	ansibleFirst.Ansible, ansibleSecond.Ansible = true, true
+	for _, test := range []struct {
+		name    string
+		details map[notifier.TouchContext]bool
+		want    notifier.TouchContext
+	}{
+		{name: "unknown"},
+		{name: "single destination", details: map[notifier.TouchContext]bool{first: true}, want: first},
+		{
+			name:    "parallel SSH authentications",
+			details: map[notifier.TouchContext]bool{third: true, first: true, second: true},
+			want:    notifier.TouchContext{SSHCandidates: "10.60.12.129:22, 10.60.12.130:22, 10.60.12.132:22"},
+		},
+		{
+			name:    "confirmed Ansible workers",
+			details: map[notifier.TouchContext]bool{ansibleSecond: true, ansibleFirst: true},
+			want:    notifier.TouchContext{SSHCandidates: "10.60.12.129\n10.60.12.130", Ansible: true},
+		},
+		{
+			name:    "mixed SSH and Ansible stays ambiguous",
+			details: map[notifier.TouchContext]bool{ansibleFirst: true, second: true},
+			want:    notifier.TouchContext{SSHCandidates: "10.60.12.129:22, 10.60.12.130:22"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := sshAgentRequestContext(test.details); got != test.want {
+				t.Fatalf("sshAgentRequestContext() = %+v, want %+v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestHasAnsibleAncestor(t *testing.T) {
+	if os.Getenv("YTD_TEST_ANSIBLE_PROCESS") == "child" {
+		if !hasAnsibleAncestor(os.Getpid()) {
+			t.Fatal("Ansible parent was not detected")
+		}
+		return
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("YTD_TEST_ANSIBLE_PROCESS") == "parent" {
+		cmd := exec.Command(executable, "-test.run=^TestHasAnsibleAncestor$")
+		cmd.Env = append(os.Environ(), "YTD_TEST_ANSIBLE_PROCESS=child")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("child: %v\n%s", err, output)
+		}
+		return
+	}
+	if hasAnsibleAncestor(os.Getpid()) {
+		t.Fatal("unrelated process was classified as Ansible")
+	}
+	for _, name := range []string{"ansible", "ansible-playbook"} {
+		helper := filepath.Join(t.TempDir(), name)
+		if err := os.Symlink(executable, helper); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(helper, "-test.run=^TestHasAnsibleAncestor$")
+		cmd.Env = append(os.Environ(), "YTD_TEST_ANSIBLE_PROCESS=parent")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%s: %v\n%s", name, err, output)
 		}
 	}
 }

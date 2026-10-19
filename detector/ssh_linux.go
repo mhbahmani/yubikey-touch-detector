@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -57,7 +58,18 @@ func describeSSHProcess(pid int) notifier.TouchContext {
 	if address := remoteAddress(pid); address != "" {
 		ip, port, _ = net.SplitHostPort(address)
 	}
-	return notifier.TouchContext{User: user, Host: host, IP: ip, Port: port}
+	return notifier.TouchContext{User: user, Host: host, IP: ip, Port: port, Ansible: hasAnsibleAncestor(pid)}
+}
+
+func hasAnsibleAncestor(pid int) bool {
+	for depth := 0; depth < 32 && pid > 1; depth++ {
+		switch processName(pid) {
+		case "ansible", "ansible-playboo", "ansible-playbook":
+			return true
+		}
+		pid = parentPID(pid)
+	}
+	return false
 }
 
 // splitSSHTarget splits "user@host" into its parts
@@ -228,9 +240,6 @@ func processName(pid int) string {
 }
 
 // isSSHAgentProcess reports whether a process name belongs to an SSH agent.
-// ssh-sk-helper is deliberately absent: it also runs as a child of a plain
-// ssh client using a security key directly, and the walk must continue to
-// the client to attribute the login.
 func isSSHAgentProcess(name string) bool {
 	switch name {
 	case "ssh-agent", "gcr-ssh-agent", "gnome-keyring-d":
@@ -243,8 +252,7 @@ func isSSHAgentProcess(name string) bool {
 // The agent (e.g. gnome-keyring or ssh-agent) talks to the device and runs
 // ssh-sk-helper as its own child, so the ssh client cannot be found from the
 // device. Instead, look for ssh clients that use an agent and have a live TCP
-// connection. A host is only reported when exactly one such session exists,
-// so the wrong address is never shown.
+// connection. Concurrent requests are reported as possible destinations.
 func sshDetailForAgentRequest() notifier.TouchContext {
 	procs, err := filepath.Glob("/proc/[0-9]*/cmdline")
 	if err != nil {
@@ -271,12 +279,36 @@ func sshDetailForAgentRequest() notifier.TouchContext {
 			details[ctx] = true
 		}
 	}
-	if len(details) != 1 {
-		log.Debugf("Found %d ssh sessions using an SSH agent with a live connection", len(details))
-		return notifier.TouchContext{}
+	log.Debugf("Found %d ssh sessions using an SSH agent with a live connection", len(details))
+	return sshAgentRequestContext(details)
+}
+
+func sshAgentRequestContext(details map[notifier.TouchContext]bool) notifier.TouchContext {
+	if len(details) > 1 {
+		allAnsible := true
+		for ctx := range details {
+			allAnsible = allAnsible && ctx.Ansible
+		}
+		addresses := make(map[string]bool, len(details))
+		for ctx := range details {
+			address := ctx.IP
+			if ctx.Port != "" && !allAnsible {
+				address = net.JoinHostPort(ctx.IP, ctx.Port)
+			}
+			addresses[address] = true
+		}
+		candidates := make([]string, 0, len(addresses))
+		for address := range addresses {
+			candidates = append(candidates, address)
+		}
+		sort.Strings(candidates)
+		separator := ", "
+		if allAnsible {
+			separator = "\n"
+		}
+		return notifier.TouchContext{SSHCandidates: strings.Join(candidates, separator), Ansible: allAnsible}
 	}
 	for ctx := range details {
-		log.Debugf("Touch request comes from %+v (via SSH agent)", ctx)
 		return ctx
 	}
 	return notifier.TouchContext{}

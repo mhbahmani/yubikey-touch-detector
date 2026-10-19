@@ -105,3 +105,48 @@ func TestProcessOnlyContext(t *testing.T) {
 		t.Fatalf("touchDetails() = %q, want %q", got, "requested by firefox")
 	}
 }
+
+func TestConcurrentSSHDetails(t *testing.T) {
+	defer SetDetailsTemplate(DefaultDetailsTemplate)
+	remove := AddTouchContext(TouchContext{SSHCandidates: "10.60.12.129:22, 10.60.12.130:22, 10.60.12.132:22"})
+	defer remove()
+	want := "SSH to one of 10.60.12.129:22, 10.60.12.130:22, 10.60.12.132:22"
+	for _, format := range []string{
+		DefaultDetailsTemplate,
+		"{{if .Process}}requested by {{.Process}}{{else}}SSH to {{.Target}}{{with .Address}} [{{.}}]{{end}}{{end}}",
+	} {
+		if err := SetDetailsTemplate(format); err != nil {
+			t.Fatal(err)
+		}
+		if got := touchDetails(); got != want {
+			t.Fatalf("touchDetails() = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestAnsibleDetails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		ctx  TouchContext
+		want string
+	}{
+		{
+			name: "parallel workers",
+			ctx:  TouchContext{SSHCandidates: "10.60.12.129\n10.60.12.130", Ansible: true},
+			want: "Ansible to:\n- 10.60.12.129\n- 10.60.12.130",
+		},
+		{
+			name: "single worker",
+			ctx:  TouchContext{Host: "worker-a", IP: "10.60.12.129", Port: "22", Ansible: true},
+			want: "Ansible to:\n- 10.60.12.129",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			remove := AddTouchContext(test.ctx)
+			defer remove()
+			if got := touchDetails(); got != test.want {
+				t.Fatalf("touchDetails() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
