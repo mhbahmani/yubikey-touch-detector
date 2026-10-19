@@ -103,9 +103,12 @@ func Run(reason, details string) {
 }
 
 func draw(gtx layout.Context, theme *material.Theme, waitingOn, details string) image.Point {
+	window := gtx.Constraints.Max
 	paint.FillShape(gtx.Ops, colBackground, clip.Rect{Max: gtx.Constraints.Max}.Op())
 
 	gtx.Constraints.Min = image.Point{}
+	// Measure the full content before requesting a window resize.
+	gtx.Constraints.Max.Y = 1 << 20
 	macro := op.Record(gtx.Ops)
 	dims := layout.UniformInset(unit.Dp(20)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Stack{}.Layout(gtx,
@@ -137,7 +140,6 @@ func draw(gtx layout.Context, theme *material.Theme, waitingOn, details string) 
 	})
 	call := macro.Stop()
 
-	window := gtx.Constraints.Max
 	center := op.Offset(image.Pt((window.X-dims.Size.X)/2, (window.Y-dims.Size.Y)/2)).Push(gtx.Ops)
 	call.Add(gtx.Ops)
 	center.Pop()
