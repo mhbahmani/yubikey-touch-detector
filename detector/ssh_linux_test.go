@@ -70,7 +70,7 @@ func TestIsSSHAgentProcess(t *testing.T) {
 		"ssh-agent":       true,
 		"gcr-ssh-agent":   true,
 		"gnome-keyring-d": true,
-		"ssh-sk-helper":   true,
+		"ssh-sk-helper":   false,
 		"firefox":         false,
 		"ssh":             false,
 		"":                false,

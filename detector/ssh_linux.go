@@ -227,11 +227,13 @@ func processName(pid int) string {
 	return strings.TrimSpace(string(comm))
 }
 
-// isSSHAgentProcess reports whether a process name belongs to an SSH agent or
-// its security key helper
+// isSSHAgentProcess reports whether a process name belongs to an SSH agent.
+// ssh-sk-helper is deliberately absent: it also runs as a child of a plain
+// ssh client using a security key directly, and the walk must continue to
+// the client to attribute the login.
 func isSSHAgentProcess(name string) bool {
 	switch name {
-	case "ssh-agent", "gcr-ssh-agent", "gnome-keyring-d", "ssh-sk-helper":
+	case "ssh-agent", "gcr-ssh-agent", "gnome-keyring-d":
 		return true
 	}
 	return false
