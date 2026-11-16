@@ -111,6 +111,23 @@ func TestSSHAgentRequestContext(t *testing.T) {
 			details: map[notifier.TouchContext]bool{ansibleFirst: true, second: true},
 			want:    notifier.TouchContext{SSHCandidates: "10.60.12.129:22, 10.60.12.130:22"},
 		},
+		{
+			name: "Ansible IPv4 numerical order",
+			details: map[notifier.TouchContext]bool{
+				{IP: "10.0.0.100", Ansible: true}: true,
+				{IP: "10.0.0.2", Ansible: true}:   true,
+				{IP: "10.0.0.10", Ansible: true}:  true,
+			},
+			want: notifier.TouchContext{SSHCandidates: "10.0.0.2\n10.0.0.10\n10.0.0.100", Ansible: true},
+		},
+		{
+			name: "Ansible IPv6 numerical order",
+			details: map[notifier.TouchContext]bool{
+				{IP: "2001:db8::10", Ansible: true}: true,
+				{IP: "2001:db8::2", Ansible: true}:  true,
+			},
+			want: notifier.TouchContext{SSHCandidates: "2001:db8::2\n2001:db8::10", Ansible: true},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := sshAgentRequestContext(test.details); got != test.want {

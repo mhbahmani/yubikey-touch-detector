@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
@@ -301,10 +302,16 @@ func sshAgentRequestContext(details map[notifier.TouchContext]bool) notifier.Tou
 		for address := range addresses {
 			candidates = append(candidates, address)
 		}
-		sort.Strings(candidates)
 		separator := ", "
 		if allAnsible {
+			sort.Slice(candidates, func(i, j int) bool {
+				left, _ := netip.ParseAddr(candidates[i])
+				right, _ := netip.ParseAddr(candidates[j])
+				return left.Less(right)
+			})
 			separator = "\n"
+		} else {
+			sort.Strings(candidates)
 		}
 		return notifier.TouchContext{SSHCandidates: strings.Join(candidates, separator), Ansible: allAnsible}
 	}
