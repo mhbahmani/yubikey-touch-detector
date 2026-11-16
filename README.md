@@ -112,7 +112,15 @@ For a stronger prompt than a notification, the app can show a dialog window that
 $ yubikey-touch-detector --popup
 ```
 
-The dialog is built into the binary (Linux only) and shows what the touch is for, e.g. the SSH host that requested it.
+The dialog is built into the binary (Linux only) and shows what the touch is for, e.g. the SSH host that requested it. Press Escape or click it to dismiss it early, e.g. after a falsely detected touch.
+
+It appears in the middle of the monitor under the pointer and stays above other windows. Choose another place with `--popup-position`: `center` (default), `top`, `bottom`, `left`, `right`, `top-left`, `top-right`, `bottom-left`, `bottom-right`, or `auto` to let the window manager decide:
+
+```
+$ yubikey-touch-detector --popup --popup-position top-right
+```
+
+Wayland does not let windows choose their position, so in a Wayland session the dialog runs through XWayland unless the position is `auto`. Without XWayland it falls back to Wayland, where the window manager places it.
 
 #### Configuring the app
 
@@ -128,6 +136,7 @@ The app supports the following environment variables and CLI arguments (CLI args
 | `YUBIKEY_TOUCH_DETECTOR_POPUP` | `--popup` |
 | `YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS` | `--ssh-details` |
 | `YUBIKEY_TOUCH_DETECTOR_ANSIBLE_DETAILS` | `--ansible-details` |
+| `YUBIKEY_TOUCH_DETECTOR_POPUP_POSITION` | `--popup-position` |
 | `YUBIKEY_TOUCH_DETECTOR_APP_DETAILS` | `--app-details` |
 | `YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE` | `--details-template` |
 | `YUBIKEY_TOUCH_DETECTOR_STDOUT`    | `--stdout`    |

@@ -15,6 +15,9 @@ import (
 	"gioui.org/app"
 	"gioui.org/f32"
 	"gioui.org/font"
+	"gioui.org/io/event"
+	"gioui.org/io/key"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -37,9 +40,25 @@ var (
 	colFooter     = nrgba(0x94, 0xa3, 0xb8, 0xff)
 )
 
-// safetyTimeout bounds the dialog's lifetime in case the detector dies
-// without terminating this process
+// safetyTimeout bounds the dialog's lifetime in case the detector stops
+// responding without exiting; the kernel already ends the dialog if the
+// detector dies. YubiKeys give up on a touch well before this.
 const safetyTimeout = 120 * time.Second
+
+// screenMargin keeps a dialog placed at an edge off that edge
+const screenMargin = unit.Dp(24)
+
+// Options describe the dialog to show
+type Options struct {
+	// Reasons is the sorted, comma-separated list of active event types,
+	// e.g. "gpg, u2f"
+	Reasons string
+	// Details describes what the touch is for, e.g. "SSH to user@host"
+	Details string
+	// Position is where to show the dialog, e.g. "center" or "top-right";
+	// "auto" leaves it to the window manager
+	Position string
+}
 
 // reasonText describes the active event types for the dialog
 func reasonText(reasons string) string {
@@ -64,10 +83,10 @@ func reasonText(reasons string) string {
 	}
 }
 
-// Run shows the touch dialog until the process is terminated. It never
-// returns while the window is open; the detector ends it with SIGTERM once
-// the touch is registered.
-func Run(reason, details string) {
+// Run shows the touch dialog until the process is terminated or the user
+// dismisses it with Escape or a click. It never returns while the window is
+// open; the detector ends it with SIGTERM once the touch is registered.
+func Run(options Options) {
 	theme := material.NewTheme()
 	theme.Shaper = text.NewShaper()
 
@@ -81,17 +100,33 @@ func Run(reason, details string) {
 	go func() {
 		var ops op.Ops
 		var height int
+		var view app.X11ViewEvent
+		var placed image.Point
 		for {
 			switch event := window.Event().(type) {
 			case app.DestroyEvent:
 				os.Exit(0)
+			case app.X11ViewEvent:
+				view = event
+				if view.Valid() {
+					undecorateX11(view)
+				}
 			case app.FrameEvent:
 				gtx := app.NewContext(&ops, event)
-				size := draw(gtx, theme, reasonText(reason), details)
+				if dismissed(gtx) {
+					os.Exit(0)
+				}
+				size := draw(gtx, theme, reasonText(options.Reasons), options.Details)
 				// Resize when text wrapping changes the natural height.
 				if abs(size.Y-height) > 2 {
 					height = size.Y
 					window.Option(app.Size(unit.Dp(440), gtx.Metric.PxToDp(size.Y)))
+				}
+				// Place the window again whenever its size changes, so it
+				// stays centered or aligned to its edge
+				if view.Valid() && options.Position != "auto" && event.Size != placed {
+					placed = event.Size
+					placeX11(view, options.Position, event.Size, gtx.Dp(screenMargin))
 				}
 				event.Frame(&ops)
 			}
@@ -111,6 +146,58 @@ func Run(reason, details string) {
 	}()
 
 	app.Main()
+}
+
+// dismissTag receives clicks anywhere in the window
+var dismissTag = new(int)
+
+// dismissed reports whether the user pressed Escape or clicked the window,
+// e.g. to close a dialog left by a falsely detected touch
+func dismissed(gtx layout.Context) bool {
+	area := clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops)
+	event.Op(gtx.Ops, dismissTag)
+	area.Pop()
+
+	dismiss := false
+	for {
+		ev, ok := gtx.Event(key.Filter{Name: key.NameEscape})
+		if !ok {
+			break
+		}
+		if press, ok := ev.(key.Event); ok && press.State == key.Press {
+			dismiss = true
+		}
+	}
+	for {
+		ev, ok := gtx.Event(pointer.Filter{Target: dismissTag, Kinds: pointer.Press})
+		if !ok {
+			break
+		}
+		if press, ok := ev.(pointer.Event); ok && press.Kind == pointer.Press {
+			dismiss = true
+		}
+	}
+	return dismiss
+}
+
+// origin returns the top-left corner that puts a window of the given size at
+// position within monitor, keeping margin from the edges it is aligned to
+func origin(position string, monitor image.Rectangle, size image.Point, margin int) image.Point {
+	free := monitor.Size().Sub(size)
+	at := monitor.Min.Add(image.Pt(free.X/2, free.Y/2))
+	if strings.HasSuffix(position, "left") {
+		at.X = monitor.Min.X + margin
+	}
+	if strings.HasSuffix(position, "right") {
+		at.X = monitor.Max.X - size.X - margin
+	}
+	if strings.HasPrefix(position, "top") {
+		at.Y = monitor.Min.Y + margin
+	}
+	if strings.HasPrefix(position, "bottom") {
+		at.Y = monitor.Max.Y - size.Y - margin
+	}
+	return at
 }
 
 func draw(gtx layout.Context, theme *material.Theme, waitingOn, details string) image.Point {
@@ -243,7 +330,7 @@ func drawText(gtx layout.Context, theme *material.Theme, waitingOn, details stri
 			})
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			footer := material.Label(theme, unit.Sp(12.7), "This window closes automatically once the key is touched.")
+			footer := material.Label(theme, unit.Sp(12.7), "Closes once the key is touched. Press Esc or click to dismiss.")
 			footer.Color = colFooter
 			return layout.Inset{Top: unit.Dp(8)}.Layout(gtx, footer.Layout)
 		}),

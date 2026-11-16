@@ -42,6 +42,10 @@ func main() {
 	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY"); found {
 		notificationBody = value
 	}
+	popupPosition := notifier.DefaultPopupPosition
+	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_POPUP_POSITION"); found {
+		popupPosition = value
+	}
 	notificationUrgency := notifier.DefaultNotificationUrgency
 	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY"); found {
 		notificationUrgency = value
@@ -85,9 +89,13 @@ func main() {
 	flag.BoolVar(&nosocket, "no-socket", envNosocket, "disable unix socket notifier")
 	flag.BoolVar(&dbus, "dbus", envDbus, "enable dbus server for IPC")
 	flag.BoolVar(&popup, "popup", envPopup, "show the built-in touch dialog while a touch is required (Linux only)")
+	flag.StringVar(&popupPosition, "popup-position", popupPosition, "where to show the touch dialog: "+strings.Join(notifier.PopupPositions, ", "))
 	flag.Parse()
 
 	if err := notifier.SetDetailsTemplates(details); err != nil {
+		log.Fatal(err)
+	}
+	if err := notifier.ValidatePopupPosition(popupPosition); err != nil {
 		log.Fatal(err)
 	}
 
@@ -131,7 +139,7 @@ func main() {
 		go notifier.SetupDbusNotifier(notifiers)
 	}
 	if popup {
-		go notifier.SetupPopupNotifier(notifiers)
+		go notifier.SetupPopupNotifier(notifiers, popupPosition)
 	}
 
 	initDetectors(notifiers, exits)

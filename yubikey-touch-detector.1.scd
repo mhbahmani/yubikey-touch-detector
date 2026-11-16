@@ -37,7 +37,10 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 	In all details templates, brackets left empty by a missing value are dropped, e.g. "SSH to host ()" becomes "SSH to host". Requesting programs and SSH details are detected on Linux only.
 
 *-popup*
-	Show the built-in touch dialog (Linux only) while a touch is required.
+	Show the built-in touch dialog (Linux only) while a touch is required. Press Escape or click the dialog to dismiss it early.
+
+*-popup-position* _position_
+	Where to show the touch dialog on the monitor under the pointer: center, top, bottom, left, right, top-left, top-right, bottom-left, or bottom-right. Defaults to "center". The dialog stays above other windows. Use "auto" to let the window manager place it. Wayland does not let windows choose their position, so in a Wayland session a positioned dialog runs through XWayland when it is available.
 
 The notification title and body use Go template syntax. _{{.Reasons}}_ expands to a sorted, comma-separated list of active event types: _gpg_, _hmac_, and _u2f_. _{{.Details}}_ describes the request, such as the SSH host (with IP and port) that is waiting for the touch; it is empty when unknown. Its format is set with *-ssh-details*, *-ansible-details*, and *-app-details*.
 
@@ -86,6 +89,9 @@ _YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY_
 
 _YUBIKEY_TOUCH_DETECTOR_POPUP_
 	Equivalent to specifying *-popup*.
+
+_YUBIKEY_TOUCH_DETECTOR_POPUP_POSITION_
+	Equivalent to specifying *-popup-position*.
 
 _YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS_
 	Equivalent to specifying *-ssh-details*.
