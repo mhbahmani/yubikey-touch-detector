@@ -259,3 +259,49 @@ func TestOverrideDescribesEveryKind(t *testing.T) {
 		t.Fatalf("touchDetails() = %q", got)
 	}
 }
+
+func TestSSHDetailsNameTheApp(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		ctx  TouchContext
+		want string
+	}{
+		{"app", TouchContext{User: "git", Host: "github.com", IP: "140.82.121.4", Port: "22", App: "Cursor"}, "SSH to git@github.com (140.82.121.4:22) from Cursor"},
+		{"typed in a terminal", TouchContext{User: "git", Host: "github.com", IP: "140.82.121.4", Port: "22"}, "SSH to git@github.com (140.82.121.4:22)"},
+		{"app without address", TouchContext{User: "git", Host: "github.com", App: "GoLand 2026.2.3"}, "SSH to git@github.com from GoLand 2026.2.3"},
+		{"candidates from one app", TouchContext{SSHCandidates: "10.0.0.1:22, 10.0.0.2:22", App: "Cursor"}, "SSH to one of 10.0.0.1:22, 10.0.0.2:22 from Cursor"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			remove := AddTouchContext(test.ctx)
+			defer remove()
+			if got := touchDetails(); got != test.want {
+				t.Fatalf("touchDetails() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCustomSSHDetailsWithApp(t *testing.T) {
+	defer SetDetailsTemplates(DetailsTemplates{})
+	if err := SetDetailsTemplates(DetailsTemplates{SSH: "{{.App}}: SSH to {{.Target}} [{{.Address}}]"}); err != nil {
+		t.Fatal(err)
+	}
+	remove := AddTouchContext(TouchContext{Host: "github.com", IP: "140.82.121.4", Port: "22", App: "Cursor"})
+	defer remove()
+	if got := touchDetails(); got != "Cursor: SSH to github.com [140.82.121.4:22]" {
+		t.Fatalf("touchDetails() = %q", got)
+	}
+}
+
+func TestTidyDetails(t *testing.T) {
+	for rendered, want := range map[string]string{
+		"SSH to host () from Cursor": "SSH to host from Cursor",
+		"SSH to host  [] ":           "SSH to host",
+		"Ansible to: \n- 10.0.0.1  ": "Ansible to:\n- 10.0.0.1",
+		"requested by  git":          "requested by git",
+	} {
+		if got := tidyDetails(rendered); got != want {
+			t.Errorf("tidyDetails(%q) = %q, want %q", rendered, got, want)
+		}
+	}
+}

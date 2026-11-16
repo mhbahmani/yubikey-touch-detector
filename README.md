@@ -80,19 +80,21 @@ The details are described with one template per kind of request, so no template 
 
 | Kind | Used for | Option | Default | Fields |
 | ---- | -------- | ------ | ------- | ------ |
-| SSH | an `ssh` client | `--ssh-details` | `SSH to {{.Target}} ({{.Address}})` | `{{.Target}}` (`user@host`), `{{.Address}}` (`ip:port`), `{{.User}}`, `{{.Host}}`, `{{.IP}}`, `{{.Port}}` |
+| SSH | an `ssh` client | `--ssh-details` | `SSH to {{.Target}} ({{.Address}}) {{.FromApp}}` | `{{.Target}}` (`user@host`), `{{.Address}}` (`ip:port`), `{{.App}}`, `{{.FromApp}}` (`from {{.App}}`), `{{.User}}`, `{{.Host}}`, `{{.IP}}`, `{{.Port}}` |
 | Ansible | ssh clients started by `ansible` or `ansible-playbook` | `--ansible-details` | `Ansible to:` and `{{.Hosts}}` on a new line | `{{.Hosts}}`, the server IPs as a bullet list, one per line |
 | App | any other program | `--app-details` | `requested by {{.Requester}}` | `{{.Requester}}`, `{{.Process}}`, `{{.PID}}`, `{{.Via}}` |
 
 For example, to show the SSH address in square brackets:
 
 ```
-$ yubikey-touch-detector --popup --ssh-details "SSH to {{.Target}} [{{.Address}}]"
+$ yubikey-touch-detector --popup --ssh-details "SSH to {{.Target}} [{{.Address}}] {{.FromApp}}"
 ```
 
-Brackets left empty by a missing value are dropped, e.g. `SSH to host ()` becomes `SSH to host` when the address is unknown.
+Traces of missing values are tidied away: empty brackets are dropped and the spaces around them collapsed, e.g. `SSH to host () from Cursor` becomes `SSH to host from Cursor` when the address is unknown, and a trailing `{{.FromApp}}` disappears when no application is known.
 
-`{{.Requester}}` names the program that asked for the touch: `firefox` for a browser WebAuthn request, `git via gpg` when git runs a signing tool (`gpg`, `gpg2`, `gpgsm`, or `ssh-keygen`) to sign a commit, or `PID 12345` when the name cannot be read, e.g. because the process already exited. A signing tool started from a shell is named on its own, e.g. `gpg`. `{{.Process}}`, `{{.PID}}`, and `{{.Via}}` hold the parts separately. Requesting programs and SSH details are detected on Linux only.
+`{{.App}}` names the application that started an ssh client, so an IDE fetching from git shows e.g. `SSH to git@github.com (140.82.121.4:22) from Cursor`. The detector walks up from ssh past `git`, shells, and similar helpers to the first other program, and names it after its desktop entry, e.g. `GoLand 2026.2.3` or `Visual Studio Code`; programs without an entry are named after the application they run inside, then after their process name. Commands typed in a terminal name no application, while those run in an IDE's built-in terminal name the IDE.
+
+`{{.Requester}}` names the program that asked for the touch, the same way: `Brave Web Browser` for a browser WebAuthn request, `Cursor via gpg` when an application has git run a signing tool (`gpg`, `gpg2`, `gpgsm`, or `ssh-keygen`) to sign a commit, `git via gpg` for the same command typed in a terminal, or `PID 12345` when the name cannot be read, e.g. because the process already exited. A signing tool typed in a terminal is named on its own, e.g. `gpg`. `{{.Process}}`, `{{.PID}}`, and `{{.Via}}` hold the parts separately. Requesting programs, applications, and SSH details are detected on Linux only.
 
 If several Ansible authentications share an agent, all of them must be identified as Ansible before the Ansible template is used; the list describes pending destinations, not which request the current touch will satisfy. For other concurrent SSH authentications, `{{.Target}}` lists the possible addresses prefixed with `one of`; the individual user, host, IP, port, and address fields remain empty.
 
@@ -134,9 +136,9 @@ The app supports the following environment variables and CLI arguments (CLI args
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY` | `--notify-body` |
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY` | `--notify-urgency` |
 | `YUBIKEY_TOUCH_DETECTOR_POPUP` | `--popup` |
+| `YUBIKEY_TOUCH_DETECTOR_POPUP_POSITION` | `--popup-position` |
 | `YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS` | `--ssh-details` |
 | `YUBIKEY_TOUCH_DETECTOR_ANSIBLE_DETAILS` | `--ansible-details` |
-| `YUBIKEY_TOUCH_DETECTOR_POPUP_POSITION` | `--popup-position` |
 | `YUBIKEY_TOUCH_DETECTOR_APP_DETAILS` | `--app-details` |
 | `YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE` | `--details-template` |
 | `YUBIKEY_TOUCH_DETECTOR_STDOUT`    | `--stdout`    |

@@ -137,6 +137,41 @@ func TestSSHAgentRequestContext(t *testing.T) {
 	}
 }
 
+func TestSSHAgentRequestContextKeepsCommonApp(t *testing.T) {
+	cursorA := notifier.TouchContext{Host: "github.com", IP: "140.82.121.4", Port: "22", App: "Cursor"}
+	cursorB := notifier.TouchContext{Host: "gitlab.com", IP: "172.65.251.78", Port: "22", App: "Cursor"}
+	terminal := notifier.TouchContext{Host: "gitlab.com", IP: "172.65.251.78", Port: "22"}
+	for _, test := range []struct {
+		name    string
+		details map[notifier.TouchContext]bool
+		want    notifier.TouchContext
+	}{
+		{"single", map[notifier.TouchContext]bool{cursorA: true}, cursorA},
+		{
+			"same app",
+			map[notifier.TouchContext]bool{cursorA: true, cursorB: true},
+			notifier.TouchContext{SSHCandidates: "140.82.121.4:22, 172.65.251.78:22", App: "Cursor"},
+		},
+		{
+			"different apps",
+			map[notifier.TouchContext]bool{cursorA: true, terminal: true},
+			notifier.TouchContext{SSHCandidates: "140.82.121.4:22, 172.65.251.78:22"},
+		},
+		{
+			// One destination reached from two places is not a choice
+			"same destination",
+			map[notifier.TouchContext]bool{cursorB: true, terminal: true},
+			terminal,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := sshAgentRequestContext(test.details); got != test.want {
+				t.Fatalf("sshAgentRequestContext() = %+v, want %+v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestHasAnsibleAncestor(t *testing.T) {
 	if os.Getenv("YTD_TEST_ANSIBLE_PROCESS") == "child" {
 		if !hasAnsibleAncestor(os.Getpid()) {

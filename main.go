@@ -81,7 +81,7 @@ func main() {
 	flag.StringVar(&notificationTitle, "notify-title", notificationTitle, "desktop notification title template")
 	flag.StringVar(&notificationBody, "notify-body", notificationBody, "desktop notification body template")
 	flag.StringVar(&notificationUrgency, "notify-urgency", notificationUrgency, "desktop notification urgency: low, normal, or critical")
-	flag.StringVar(&details.SSH, "ssh-details", details.SSH, "describe an ssh request. Fields: {{.Target}} (user@host), {{.Address}} (ip:port), {{.User}}, {{.Host}}, {{.IP}}, {{.Port}}")
+	flag.StringVar(&details.SSH, "ssh-details", details.SSH, "describe an ssh request. Fields: {{.Target}} (user@host), {{.Address}} (ip:port), {{.App}} (e.g. Cursor), {{.FromApp}} (\"from <App>\" or empty), {{.User}}, {{.Host}}, {{.IP}}, {{.Port}}")
 	flag.StringVar(&details.Ansible, "ansible-details", details.Ansible, "describe ssh requests from ansible. Fields: {{.Hosts}} (one \"- ip\" per line)")
 	flag.StringVar(&details.App, "app-details", details.App, "describe a request from any other program. Fields: {{.Requester}} (e.g. \"git via gpg\" or \"PID 1234\"), {{.Process}}, {{.PID}}, {{.Via}}")
 	flag.StringVar(&details.Override, "details-template", details.Override, "advanced: describe every request with this one template instead, using any of the fields above and {{.Ansible}}")

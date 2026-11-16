@@ -49,7 +49,7 @@ func describeSSHProcess(pid int) notifier.TouchContext {
 	if address := remoteAddress(pid); address != "" {
 		ip, port, _ = net.SplitHostPort(address)
 	}
-	return notifier.TouchContext{User: user, Host: host, IP: ip, Port: port, Ansible: hasAnsibleAncestor(pid)}
+	return notifier.TouchContext{User: user, Host: host, IP: ip, Port: port, Ansible: hasAnsibleAncestor(pid), App: requestingApp(pid)}
 }
 
 func hasAnsibleAncestor(pid int) bool {
@@ -276,6 +276,23 @@ func sshDetailForAgentRequest() notifier.TouchContext {
 }
 
 func sshAgentRequestContext(details map[notifier.TouchContext]bool) notifier.TouchContext {
+	// Name the application only when every candidate comes from it
+	app, first := "", true
+	for ctx := range details {
+		if first {
+			app, first = ctx.App, false
+		} else if ctx.App != app {
+			app = ""
+		}
+	}
+	if len(details) > 1 {
+		merged := make(map[notifier.TouchContext]bool, len(details))
+		for ctx := range details {
+			ctx.App = app
+			merged[ctx] = true
+		}
+		details = merged
+	}
 	if len(details) > 1 {
 		allAnsible := true
 		for ctx := range details {
@@ -304,7 +321,7 @@ func sshAgentRequestContext(details map[notifier.TouchContext]bool) notifier.Tou
 		} else {
 			sort.Strings(candidates)
 		}
-		return notifier.TouchContext{SSHCandidates: strings.Join(candidates, separator), Ansible: allAnsible}
+		return notifier.TouchContext{SSHCandidates: strings.Join(candidates, separator), Ansible: allAnsible, App: app}
 	}
 	for ctx := range details {
 		return ctx

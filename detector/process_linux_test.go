@@ -14,6 +14,7 @@ import (
 )
 
 func TestRequesterContextOfSelf(t *testing.T) {
+	useTestApplications(t, "")
 	ctx := requesterContext(os.Getpid())
 	if ctx.PID != os.Getpid() || ctx.Process != processName(os.Getpid()) || ctx.Process == "" {
 		t.Fatalf("requesterContext(self) = %+v", ctx)
@@ -96,11 +97,12 @@ func startNamed(t *testing.T, name string) *exec.Cmd {
 }
 
 func TestRequesterContextNamesAppRunningSigningTool(t *testing.T) {
+	useTestApplications(t)
 	for _, tool := range []string{"gpg", "ssh-keygen"} {
 		t.Run(tool, func(t *testing.T) {
-			// The test binary plays the app, e.g. git, that runs the tool
+			// The test binary plays the app, e.g. an IDE, that runs the tool
 			child := startNamed(t, tool)
-			want := notifier.TouchContext{Process: requesterName(os.Getpid()), PID: os.Getpid(), Via: tool}
+			want := notifier.TouchContext{Process: "Fake IDE", PID: os.Getpid(), Via: tool}
 			if got := requesterContext(child.Process.Pid); got != want {
 				t.Fatalf("requesterContext(%s) = %+v, want %+v", tool, got, want)
 			}
@@ -109,6 +111,7 @@ func TestRequesterContextNamesAppRunningSigningTool(t *testing.T) {
 }
 
 func TestRequesterContextKeepsOtherProcesses(t *testing.T) {
+	useTestApplications(t)
 	child := startNamed(t, "firefox")
 	want := notifier.TouchContext{Process: "firefox", PID: child.Process.Pid}
 	if got := requesterContext(child.Process.Pid); got != want {
@@ -116,7 +119,11 @@ func TestRequesterContextKeepsOtherProcesses(t *testing.T) {
 	}
 }
 
-func TestRequesterContextIgnoresShellParent(t *testing.T) {
+// A shell started by an application, e.g. "sh -c gpg ...", is passed through
+// to that application; only a shell in a terminal hides it (see
+// TestIsTerminalSpawn)
+func TestRequesterContextSeesThroughScriptShell(t *testing.T) {
+	useTestApplications(t)
 	sleep, err := exec.LookPath("sleep")
 	if err != nil {
 		t.Skip("sleep is not available")
@@ -125,7 +132,7 @@ func TestRequesterContextIgnoresShellParent(t *testing.T) {
 	if err := os.Symlink(sleep, helper); err != nil {
 		t.Fatal(err)
 	}
-	// Run gpg from a shell, as a user typing it would, and learn its PID
+	// Run gpg from a shell started by the test binary, and learn its PID
 	shell := exec.Command("sh", "-c", `"$0" 10 & echo $!; wait`, helper)
 	stdout, err := shell.StdoutPipe()
 	if err != nil {
@@ -151,7 +158,7 @@ func TestRequesterContextIgnoresShellParent(t *testing.T) {
 	for deadline := time.Now().Add(2 * time.Second); processName(pid) != "gpg" && time.Now().Before(deadline); {
 		time.Sleep(5 * time.Millisecond)
 	}
-	want := notifier.TouchContext{Process: "gpg", PID: pid}
+	want := notifier.TouchContext{Process: "Fake IDE", PID: os.Getpid(), Via: "gpg"}
 	if got := requesterContext(pid); got != want {
 		t.Fatalf("requesterContext(gpg from sh) = %+v, want %+v", got, want)
 	}

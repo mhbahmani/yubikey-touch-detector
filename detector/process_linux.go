@@ -36,29 +36,42 @@ func peerCredentials(conn net.Conn) (*unix.Ucred, bool) {
 	return cred, true
 }
 
-// requesterContext describes a process that asked for a touch. The PID is
-// kept even when the name cannot be read, so the request is never anonymous.
-// Signing tools usually run on behalf of another program, so that program is
-// named instead, e.g. git running gpg to sign a commit.
+// requesterContext describes a process that asked for a touch, named the way
+// the desktop names it, e.g. "Brave Web Browser". The PID is kept even when
+// the name cannot be read, so the request is never anonymous. Signing tools
+// usually run on behalf of an application, so that application is named
+// instead, e.g. "Cursor" when Cursor runs git, which runs gpg.
 func requesterContext(pid int) notifier.TouchContext {
 	if pid <= 0 {
 		return notifier.TouchContext{}
 	}
-	ctx := notifier.TouchContext{Process: requesterName(pid), PID: pid}
-	if !isSigningTool(ctx.Process) {
-		return ctx
+	tool := requesterName(pid)
+	if tool == "" {
+		return notifier.TouchContext{PID: pid}
 	}
+	if !isSigningTool(tool) {
+		// The requester is the application itself, e.g. a browser or an IDE
+		// with a built-in SSH client
+		name, _ := appDisplayName(pid, false)
+		return notifier.TouchContext{Process: name, PID: pid}
+	}
+	ctx := notifier.TouchContext{Process: tool, PID: pid}
 	parent := parentPID(pid)
 	if parent <= 1 {
 		return ctx
 	}
-	// A shell parent means the tool was run by hand; naming the shell would
-	// say nothing useful
+	if app, ok := appAncestor(parent); ok {
+		if name, terminal := appDisplayName(app, true); !terminal {
+			return notifier.TouchContext{Process: name, PID: app, Via: tool}
+		}
+	}
+	// Typed in a terminal: name the direct parent, e.g. "git via gpg", unless
+	// it is the shell itself
 	name := requesterName(parent)
 	if name == "" || isShell(name) || isSigningTool(name) {
 		return ctx
 	}
-	return notifier.TouchContext{Process: name, PID: parent, Via: ctx.Process}
+	return notifier.TouchContext{Process: name, PID: parent, Via: tool}
 }
 
 // isSigningTool reports whether a process signs or decrypts for the program

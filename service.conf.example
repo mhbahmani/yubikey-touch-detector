@@ -17,7 +17,7 @@ YUBIKEY_TOUCH_DETECTOR_NOTIFY=true
 # YUBIKEY_TOUCH_DETECTOR_POPUP_POSITION=top-right
 
 # describe the request that waits for a touch, one template per kind
-# YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS="SSH to {{.Target}} [{{.Address}}]"
+# YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS="SSH to {{.Target}} [{{.Address}}] {{.FromApp}}"
 # YUBIKEY_TOUCH_DETECTOR_ANSIBLE_DETAILS="Ansible to:
 # {{.Hosts}}"
 # YUBIKEY_TOUCH_DETECTOR_APP_DETAILS="requested by {{.Requester}}"

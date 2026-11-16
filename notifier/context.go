@@ -14,7 +14,7 @@ import (
 
 // Default templates for each kind of request that waits for a touch
 const (
-	DefaultSSHDetails     = "SSH to {{.Target}} ({{.Address}})"
+	DefaultSSHDetails     = "SSH to {{.Target}} ({{.Address}}) {{.FromApp}}"
 	DefaultAnsibleDetails = "Ansible to:\n{{.Hosts}}"
 	DefaultAppDetails     = "requested by {{.Requester}}"
 )
@@ -49,6 +49,9 @@ type TouchContext struct {
 	// Via names the tool that talks to the key on behalf of Process, e.g. gpg
 	// when git signs a commit
 	Via string
+	// App names the application that started an ssh client, e.g. "Cursor"
+	// when it runs git over SSH; empty when typed in a terminal
+	App string
 	// SSHCandidates lists possible destinations when a shared agent has concurrent requests.
 	SSHCandidates string
 	Ansible       bool
@@ -68,6 +71,10 @@ type DetailsData struct {
 	Requester string
 	Target    string
 	Address   string
+	// App names the application behind an ssh request, e.g. "Cursor"
+	App string
+	// FromApp is "from <App>", or empty when the application is unknown
+	FromApp string
 	// Hosts lists Ansible destinations, one "- ip" per line
 	Hosts   string
 	Ansible bool
@@ -172,6 +179,21 @@ func AddTouchContext(ctx TouchContext) (remove func()) {
 // address in "SSH to host ()"
 var emptyBrackets = regexp.MustCompile(`[ \t]*(\(\s*\)|\[\s*\])`)
 
+// extraSpaces matches the gap a missing value leaves between words, e.g.
+// "SSH to host  from Cursor" without an address
+var extraSpaces = regexp.MustCompile(`[ \t]{2,}`)
+
+// tidyDetails removes the traces of values that are unknown, so templates
+// need no conditionals
+func tidyDetails(rendered string) string {
+	rendered = extraSpaces.ReplaceAllString(emptyBrackets.ReplaceAllString(rendered, ""), " ")
+	lines := strings.Split(rendered, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimSpace(line)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
 // touchDetails renders every recorded request with the template for its
 // kind, returning the distinct results sorted and joined on one line.
 func touchDetails() string {
@@ -185,7 +207,7 @@ func touchDetails() string {
 		if err := touchContexts.templates[ctx.kind()].Execute(&rendered, newDetailsData(ctx)); err != nil {
 			continue
 		}
-		detail := strings.TrimSpace(emptyBrackets.ReplaceAllString(rendered.String(), ""))
+		detail := tidyDetails(rendered.String())
 		if detail != "" && !seen[detail] {
 			seen[detail] = true
 			details = append(details, detail)
@@ -234,9 +256,18 @@ func newDetailsData(ctx TouchContext) DetailsData {
 		Requester: requester(ctx),
 		Target:    target,
 		Address:   address,
+		App:       ctx.App,
+		FromApp:   fromApp(ctx.App),
 		Hosts:     hosts,
 		Ansible:   ctx.Ansible,
 	}
+}
+
+func fromApp(app string) string {
+	if app == "" {
+		return ""
+	}
+	return "from " + app
 }
 
 // requester names the program behind a request, e.g. "git via gpg"

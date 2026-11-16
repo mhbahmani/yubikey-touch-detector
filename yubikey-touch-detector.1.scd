@@ -23,18 +23,18 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 	Set the desktop notification urgency: low, normal, or critical. Defaults to "normal". Notification daemons typically keep critical notifications on screen until they are dismissed; the app closes its notification as soon as the touch is registered.
 
 *-ssh-details* _template_
-	Go template describing a request from an ssh client. Defaults to "SSH to {{.Target}} ({{.Address}})". Fields: _{{.Target}}_ (user@host, or "one of" and the possible addresses for concurrent requests), _{{.Address}}_ (ip:port), _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, and _{{.Port}}_.
+	Go template describing a request from an ssh client. Defaults to "SSH to {{.Target}} ({{.Address}}) {{.FromApp}}". Fields: _{{.Target}}_ (user@host, or "one of" and the possible addresses for concurrent requests), _{{.Address}}_ (ip:port), _{{.App}}_ (the application that started ssh, e.g. "Cursor" when an IDE runs git; empty for commands typed in a terminal), _{{.FromApp}}_ ("from" and the application, or empty), _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, and _{{.Port}}_. Applications are named after their desktop entry.
 
 *-ansible-details* _template_
 	Go template describing ssh requests started by ansible. Defaults to "Ansible to:" followed by _{{.Hosts}}_ on a new line. _{{.Hosts}}_ lists the server IPs, one "- ip" per line.
 
 *-app-details* _template_
-	Go template describing a request from any other program. Defaults to "requested by {{.Requester}}". _{{.Requester}}_ names the program, e.g. "firefox", "git via gpg" when git runs a signing tool (gpg, gpg2, gpgsm, or ssh-keygen), or "PID 12345" when the name cannot be read. _{{.Process}}_, _{{.PID}}_, and _{{.Via}}_ hold the parts separately.
+	Go template describing a request from any other program. Defaults to "requested by {{.Requester}}". _{{.Requester}}_ names the program after its desktop entry, e.g. "Brave Web Browser", "Cursor via gpg" when an application has git run a signing tool (gpg, gpg2, gpgsm, or ssh-keygen), "git via gpg" for the same command typed in a terminal, or "PID 12345" when the name cannot be read. _{{.Process}}_, _{{.PID}}_, and _{{.Via}}_ hold the parts separately.
 
 *-details-template* _template_
 	Advanced: describe every kind of request with this one Go template instead of the three above. Accepts all of their fields, plus _{{.Ansible}}_, which is true for ansible requests.
 
-	In all details templates, brackets left empty by a missing value are dropped, e.g. "SSH to host ()" becomes "SSH to host". Requesting programs and SSH details are detected on Linux only.
+	In all details templates, brackets left empty by a missing value are dropped and extra spaces collapsed, e.g. "SSH to host () from Cursor" becomes "SSH to host from Cursor". Requesting programs and SSH details are detected on Linux only.
 
 *-popup*
 	Show the built-in touch dialog (Linux only) while a touch is required. Press Escape or click the dialog to dismiss it early.
