@@ -74,11 +74,29 @@ The built-in title and body can be overridden independently:
 $ yubikey-touch-detector --notify --notify-title "Security key required: {{.Reasons}}" --notify-body "Touch your YubiKey to continue."
 ```
 
-The title and body are Go templates. `{{.Reasons}}` expands to a sorted, comma-separated list of the active event types (`gpg`, `hmac`, and `u2f`). `{{.Details}}` describes what the touch is for, such as the SSH host that requested it (`SSH to deploy@10.0.0.5 (10.0.0.5:22)`), and is empty when unknown. Its format is set with `--details-template`, which accepts `{{.User}}`, `{{.Host}}`, `{{.IP}}`, `{{.Port}}`, `{{.Target}}` (`user@host`), `{{.Address}}` (`ip:port`), `{{.Process}}`, which names the requesting application when it is not ssh, `{{.PID}}`, its process ID, and `{{.Via}}`, the signing tool (`gpg`, `gpg2`, `gpgsm`, or `ssh-keygen`) that application ran. The default details show the name, e.g. `requested by firefox` for a browser WebAuthn request or `requested by git via gpg` when signing a commit, and fall back to `requested by PID 12345` when the name cannot be read, e.g. because the process already exited. A signing tool started from a shell is shown on its own, e.g. `requested by gpg`. Requesting processes and SSH details are detected on Linux only. The default body is `Touch your YubiKey to continue ({{.Reasons}}).` followed by the details on a new line, allowing notification daemons such as dunst to match the event type.
+The title and body are Go templates. `{{.Reasons}}` expands to a sorted, comma-separated list of the active event types (`gpg`, `hmac`, and `u2f`). `{{.Details}}` describes what the touch is for and is empty when unknown. The default body is `Touch your YubiKey to continue ({{.Reasons}}).` followed by the details on a new line, allowing notification daemons such as dunst to match the event type.
 
-When SSH clients descend from `ansible` or `ansible-playbook`, `{{.Ansible}}` is true and `{{.Target}}` contains a bullet list of server IPs. The default details format shows `Ansible to:` followed by this list, one server per line. If several authentications share an agent, all candidates must be identified as Ansible before this label is used; the list describes pending destinations, not which request the current touch will satisfy.
+The details are described with one template per kind of request, so no template needs conditionals. Set only the ones you want to change:
 
-For other concurrent SSH authentications, `{{.Target}}` lists the possible addresses prefixed with `one of`; the individual user, host, IP, port, and address fields remain empty.
+| Kind | Used for | Option | Default | Fields |
+| ---- | -------- | ------ | ------- | ------ |
+| SSH | an `ssh` client | `--ssh-details` | `SSH to {{.Target}} ({{.Address}})` | `{{.Target}}` (`user@host`), `{{.Address}}` (`ip:port`), `{{.User}}`, `{{.Host}}`, `{{.IP}}`, `{{.Port}}` |
+| Ansible | ssh clients started by `ansible` or `ansible-playbook` | `--ansible-details` | `Ansible to:` and `{{.Hosts}}` on a new line | `{{.Hosts}}`, the server IPs as a bullet list, one per line |
+| App | any other program | `--app-details` | `requested by {{.Requester}}` | `{{.Requester}}`, `{{.Process}}`, `{{.PID}}`, `{{.Via}}` |
+
+For example, to show the SSH address in square brackets:
+
+```
+$ yubikey-touch-detector --popup --ssh-details "SSH to {{.Target}} [{{.Address}}]"
+```
+
+Brackets left empty by a missing value are dropped, e.g. `SSH to host ()` becomes `SSH to host` when the address is unknown.
+
+`{{.Requester}}` names the program that asked for the touch: `firefox` for a browser WebAuthn request, `git via gpg` when git runs a signing tool (`gpg`, `gpg2`, `gpgsm`, or `ssh-keygen`) to sign a commit, or `PID 12345` when the name cannot be read, e.g. because the process already exited. A signing tool started from a shell is named on its own, e.g. `gpg`. `{{.Process}}`, `{{.PID}}`, and `{{.Via}}` hold the parts separately. Requesting programs and SSH details are detected on Linux only.
+
+If several Ansible authentications share an agent, all of them must be identified as Ansible before the Ansible template is used; the list describes pending destinations, not which request the current touch will satisfy. For other concurrent SSH authentications, `{{.Target}}` lists the possible addresses prefixed with `one of`; the individual user, host, IP, port, and address fields remain empty.
+
+For full control, `--details-template` describes every kind with a single template instead, and takes precedence over the options above. It accepts all of the fields above, plus `{{.Ansible}}`, which is true for Ansible requests.
 
 The notification urgency can also be set to `low`, `normal` (default), or `critical`. Most notification daemons keep `critical` notifications on screen until they are dismissed, and the app closes its notification as soon as the touch is registered, making this useful when the default banner is too easy to miss:
 
@@ -108,6 +126,9 @@ The app supports the following environment variables and CLI arguments (CLI args
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY` | `--notify-body` |
 | `YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY` | `--notify-urgency` |
 | `YUBIKEY_TOUCH_DETECTOR_POPUP` | `--popup` |
+| `YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS` | `--ssh-details` |
+| `YUBIKEY_TOUCH_DETECTOR_ANSIBLE_DETAILS` | `--ansible-details` |
+| `YUBIKEY_TOUCH_DETECTOR_APP_DETAILS` | `--app-details` |
 | `YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE` | `--details-template` |
 | `YUBIKEY_TOUCH_DETECTOR_STDOUT`    | `--stdout`    |
 | `YUBIKEY_TOUCH_DETECTOR_NOSOCKET`  | `--no-socket` |

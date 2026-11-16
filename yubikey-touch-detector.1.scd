@@ -22,13 +22,24 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 *-notify-urgency* _urgency_
 	Set the desktop notification urgency: low, normal, or critical. Defaults to "normal". Notification daemons typically keep critical notifications on screen until they are dismissed; the app closes its notification as soon as the touch is registered.
 
+*-ssh-details* _template_
+	Go template describing a request from an ssh client. Defaults to "SSH to {{.Target}} ({{.Address}})". Fields: _{{.Target}}_ (user@host, or "one of" and the possible addresses for concurrent requests), _{{.Address}}_ (ip:port), _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, and _{{.Port}}_.
+
+*-ansible-details* _template_
+	Go template describing ssh requests started by ansible. Defaults to "Ansible to:" followed by _{{.Hosts}}_ on a new line. _{{.Hosts}}_ lists the server IPs, one "- ip" per line.
+
+*-app-details* _template_
+	Go template describing a request from any other program. Defaults to "requested by {{.Requester}}". _{{.Requester}}_ names the program, e.g. "firefox", "git via gpg" when git runs a signing tool (gpg, gpg2, gpgsm, or ssh-keygen), or "PID 12345" when the name cannot be read. _{{.Process}}_, _{{.PID}}_, and _{{.Via}}_ hold the parts separately.
+
 *-details-template* _template_
-	Go template describing the request that waits for a touch, e.g. the SSH session. Defaults to "SSH to {{.Target}} ({{.Address}})" for ssh requests and "requested by {{.Process}}" otherwise, e.g. for a browser making a WebAuthn request, with " via {{.Via}}" added when the application runs a signing tool, e.g. "requested by git via gpg", or "requested by PID {{.PID}}" when the process name cannot be read. Available fields: _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, _{{.Port}}_, _{{.Target}}_ (user@host), _{{.Address}}_ (ip:port), _{{.Process}}_ (the requesting application), _{{.PID}}_ (its process ID), and _{{.Via}}_ (the signing tool it ran: gpg, gpg2, gpgsm, or ssh-keygen). Requesting processes and SSH details are detected on Linux only.
+	Advanced: describe every kind of request with this one Go template instead of the three above. Accepts all of their fields, plus _{{.Ansible}}_, which is true for ansible requests.
+
+	In all details templates, brackets left empty by a missing value are dropped, e.g. "SSH to host ()" becomes "SSH to host". Requesting programs and SSH details are detected on Linux only.
 
 *-popup*
 	Show the built-in touch dialog (Linux only) while a touch is required.
 
-The notification title and body use Go template syntax. _{{.Reasons}}_ expands to a sorted, comma-separated list of active event types: _gpg_, _hmac_, and _u2f_. _{{.Details}}_ describes the request, such as the SSH host (with IP and port) that is waiting for the touch; it is empty when unknown. Its format is set with *-details-template*.
+The notification title and body use Go template syntax. _{{.Reasons}}_ expands to a sorted, comma-separated list of active event types: _gpg_, _hmac_, and _u2f_. _{{.Details}}_ describes the request, such as the SSH host (with IP and port) that is waiting for the touch; it is empty when unknown. Its format is set with *-ssh-details*, *-ansible-details*, and *-app-details*.
 
 *-no-socket*
 	Disable unix socket notifier.
@@ -75,6 +86,15 @@ _YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY_
 
 _YUBIKEY_TOUCH_DETECTOR_POPUP_
 	Equivalent to specifying *-popup*.
+
+_YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS_
+	Equivalent to specifying *-ssh-details*.
+
+_YUBIKEY_TOUCH_DETECTOR_ANSIBLE_DETAILS_
+	Equivalent to specifying *-ansible-details*.
+
+_YUBIKEY_TOUCH_DETECTOR_APP_DETAILS_
+	Equivalent to specifying *-app-details*.
 
 _YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE_
 	Equivalent to specifying *-details-template*.

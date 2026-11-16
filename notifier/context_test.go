@@ -60,9 +60,9 @@ func TestDefaultNotificationBodyIncludesDetails(t *testing.T) {
 }
 
 func TestCustomDetailsTemplate(t *testing.T) {
-	defer SetDetailsTemplate(DefaultDetailsTemplate)
+	defer SetDetailsTemplates(DetailsTemplates{})
 
-	if err := SetDetailsTemplate("{{.User}} at {{.Host}} [{{.IP}}]"); err != nil {
+	if err := SetDetailsTemplates(DetailsTemplates{SSH: "{{.User}} at {{.Host}} [{{.IP}}]"}); err != nil {
 		t.Fatal(err)
 	}
 	remove := AddTouchContext(TouchContext{User: "alice", Host: "prod-db", IP: "10.0.0.5", Port: "22"})
@@ -92,8 +92,15 @@ func TestMissingAddressIsOmitted(t *testing.T) {
 }
 
 func TestInvalidDetailsTemplateIsRejected(t *testing.T) {
-	if err := SetDetailsTemplate("{{.User"); err == nil {
-		t.Fatal("SetDetailsTemplate accepted an invalid template")
+	for _, templates := range []DetailsTemplates{
+		{SSH: "{{.User"},
+		{Ansible: "{{.Hosts"},
+		{App: "{{.Requester"},
+		{Override: "{{.User"},
+	} {
+		if err := SetDetailsTemplates(templates); err == nil {
+			t.Fatalf("SetDetailsTemplates(%+v) accepted an invalid template", templates)
+		}
 	}
 }
 
@@ -134,9 +141,9 @@ func TestPIDOnlyContext(t *testing.T) {
 }
 
 func TestPIDInCustomDetailsTemplate(t *testing.T) {
-	defer SetDetailsTemplate(DefaultDetailsTemplate)
+	defer SetDetailsTemplates(DetailsTemplates{})
 
-	if err := SetDetailsTemplate("{{.Process}} [{{.PID}}]"); err != nil {
+	if err := SetDetailsTemplates(DetailsTemplates{App: "{{.Process}} [{{.PID}}]"}); err != nil {
 		t.Fatal(err)
 	}
 	remove := AddTouchContext(TouchContext{Process: "git", PID: 4242})
@@ -148,15 +155,16 @@ func TestPIDInCustomDetailsTemplate(t *testing.T) {
 }
 
 func TestConcurrentSSHDetails(t *testing.T) {
-	defer SetDetailsTemplate(DefaultDetailsTemplate)
+	defer SetDetailsTemplates(DetailsTemplates{})
 	remove := AddTouchContext(TouchContext{SSHCandidates: "10.60.12.129:22, 10.60.12.130:22, 10.60.12.132:22"})
 	defer remove()
 	want := "SSH to one of 10.60.12.129:22, 10.60.12.130:22, 10.60.12.132:22"
-	for _, format := range []string{
-		DefaultDetailsTemplate,
-		"{{if .Process}}requested by {{.Process}}{{else}}SSH to {{.Target}}{{with .Address}} [{{.}}]{{end}}{{end}}",
+	for _, templates := range []DetailsTemplates{
+		{},
+		{SSH: "SSH to {{.Target}} [{{.Address}}]"},
+		{Override: "{{if .Process}}requested by {{.Process}}{{else}}SSH to {{.Target}}{{with .Address}} [{{.}}]{{end}}{{end}}"},
 	} {
-		if err := SetDetailsTemplate(format); err != nil {
+		if err := SetDetailsTemplates(templates); err != nil {
 			t.Fatal(err)
 		}
 		if got := touchDetails(); got != want {
@@ -189,5 +197,65 @@ func TestAnsibleDetails(t *testing.T) {
 				t.Fatalf("touchDetails() = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestEachKindUsesItsOwnTemplate(t *testing.T) {
+	defer SetDetailsTemplates(DetailsTemplates{})
+	if err := SetDetailsTemplates(DetailsTemplates{
+		SSH:     "ssh {{.Target}} [{{.Address}}]",
+		Ansible: "ansible {{.Hosts}}",
+		App:     "app {{.Requester}}",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		ctx  TouchContext
+		want string
+	}{
+		{"ssh", TouchContext{User: "alice", Host: "db", IP: "10.0.0.5", Port: "22"}, "ssh alice@db [10.0.0.5:22]"},
+		{"ssh without address", TouchContext{User: "alice", Host: "db"}, "ssh alice@db"},
+		{"ansible", TouchContext{IP: "10.0.0.5", Port: "22", Ansible: true}, "ansible - 10.0.0.5"},
+		{"app via tool", TouchContext{Process: "git", PID: 4242, Via: "gpg"}, "app git via gpg"},
+		{"app", TouchContext{Process: "firefox", PID: 4242}, "app firefox"},
+		{"app without name", TouchContext{PID: 4242}, "app PID 4242"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			remove := AddTouchContext(test.ctx)
+			defer remove()
+			if got := touchDetails(); got != test.want {
+				t.Fatalf("touchDetails() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestEmptyKindTemplateKeepsDefault(t *testing.T) {
+	defer SetDetailsTemplates(DetailsTemplates{})
+	if err := SetDetailsTemplates(DetailsTemplates{SSH: "custom {{.Target}}"}); err != nil {
+		t.Fatal(err)
+	}
+	remove := AddTouchContext(TouchContext{Process: "git", Via: "gpg"})
+	defer remove()
+	if got := touchDetails(); got != "requested by git via gpg" {
+		t.Fatalf("touchDetails() = %q, want the default app details", got)
+	}
+}
+
+func TestOverrideDescribesEveryKind(t *testing.T) {
+	defer SetDetailsTemplates(DetailsTemplates{})
+	if err := SetDetailsTemplates(DetailsTemplates{
+		App:      "ignored",
+		Override: "{{if .Process}}app {{.Process}}{{else}}ssh {{.Target}}{{end}}",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	removeApp := AddTouchContext(TouchContext{Process: "git"})
+	defer removeApp()
+	removeSSH := AddTouchContext(TouchContext{Host: "db"})
+	defer removeSSH()
+	if got := touchDetails(); got != "app git, ssh db" {
+		t.Fatalf("touchDetails() = %q", got)
 	}
 }

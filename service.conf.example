@@ -12,8 +12,11 @@ YUBIKEY_TOUCH_DETECTOR_NOTIFY=true
 # show a dialog window while a touch is required (Linux only)
 # YUBIKEY_TOUCH_DETECTOR_POPUP=true
 
-# describe the request that waits for a touch; fields: User, Host, IP, Port, Target, Address, Process
-# YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE="SSH to {{.Target}} ({{.Address}})"
+# describe the request that waits for a touch, one template per kind
+# YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS="SSH to {{.Target}} [{{.Address}}]"
+# YUBIKEY_TOUCH_DETECTOR_ANSIBLE_DETAILS="Ansible to:
+# {{.Hosts}}"
+# YUBIKEY_TOUCH_DETECTOR_APP_DETAILS="requested by {{.Requester}}"
 
 # do not print notifications to stdout
 YUBIKEY_TOUCH_DETECTOR_STDOUT=false

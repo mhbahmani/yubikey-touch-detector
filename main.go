@@ -46,9 +46,20 @@ func main() {
 	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY"); found {
 		notificationUrgency = value
 	}
-	detailsTemplate := notifier.DefaultDetailsTemplate
-	if value, found := os.LookupEnv("YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE"); found {
-		detailsTemplate = value
+	details := notifier.DetailsTemplates{
+		SSH:      os.Getenv("YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS"),
+		Ansible:  os.Getenv("YUBIKEY_TOUCH_DETECTOR_ANSIBLE_DETAILS"),
+		App:      os.Getenv("YUBIKEY_TOUCH_DETECTOR_APP_DETAILS"),
+		Override: os.Getenv("YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE"),
+	}
+	if details.SSH == "" {
+		details.SSH = notifier.DefaultSSHDetails
+	}
+	if details.Ansible == "" {
+		details.Ansible = notifier.DefaultAnsibleDetails
+	}
+	if details.App == "" {
+		details.App = notifier.DefaultAppDetails
 	}
 
 	var version bool
@@ -66,14 +77,17 @@ func main() {
 	flag.StringVar(&notificationTitle, "notify-title", notificationTitle, "desktop notification title template")
 	flag.StringVar(&notificationBody, "notify-body", notificationBody, "desktop notification body template")
 	flag.StringVar(&notificationUrgency, "notify-urgency", notificationUrgency, "desktop notification urgency: low, normal, or critical")
-	flag.StringVar(&detailsTemplate, "details-template", detailsTemplate, "describe the request waiting for a touch, e.g. \"SSH to {{.Target}} ({{.Address}})\". Fields: {{.User}}, {{.Host}}, {{.IP}}, {{.Port}}, {{.Target}} (user@host), {{.Address}} (ip:port), {{.Process}} (requesting app), {{.PID}} (its process ID), {{.Via}} (signing tool it ran, e.g. gpg)")
+	flag.StringVar(&details.SSH, "ssh-details", details.SSH, "describe an ssh request. Fields: {{.Target}} (user@host), {{.Address}} (ip:port), {{.User}}, {{.Host}}, {{.IP}}, {{.Port}}")
+	flag.StringVar(&details.Ansible, "ansible-details", details.Ansible, "describe ssh requests from ansible. Fields: {{.Hosts}} (one \"- ip\" per line)")
+	flag.StringVar(&details.App, "app-details", details.App, "describe a request from any other program. Fields: {{.Requester}} (e.g. \"git via gpg\" or \"PID 1234\"), {{.Process}}, {{.PID}}, {{.Via}}")
+	flag.StringVar(&details.Override, "details-template", details.Override, "advanced: describe every request with this one template instead, using any of the fields above and {{.Ansible}}")
 	flag.BoolVar(&stdout, "stdout", envStdout, "print notifications to stdout")
 	flag.BoolVar(&nosocket, "no-socket", envNosocket, "disable unix socket notifier")
 	flag.BoolVar(&dbus, "dbus", envDbus, "enable dbus server for IPC")
 	flag.BoolVar(&popup, "popup", envPopup, "show the built-in touch dialog while a touch is required (Linux only)")
 	flag.Parse()
 
-	if err := notifier.SetDetailsTemplate(detailsTemplate); err != nil {
+	if err := notifier.SetDetailsTemplates(details); err != nil {
 		log.Fatal(err)
 	}
 
