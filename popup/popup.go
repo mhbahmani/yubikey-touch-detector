@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -40,14 +41,24 @@ var (
 // without terminating this process
 const safetyTimeout = 120 * time.Second
 
-func reasonText(reason string) string {
-	switch reason {
+// reasonText describes the active event types for the dialog
+func reasonText(reasons string) string {
+	var active []string
+	for _, reason := range strings.Split(reasons, ",") {
+		if reason = strings.TrimSpace(reason); reason != "" {
+			active = append(active, reason)
+		}
+	}
+	if len(active) > 1 {
+		return "Several requests are waiting"
+	}
+	switch strings.Join(active, "") {
 	case "u2f":
 		return "A security key is asking for a touch"
 	case "gpg":
 		return "A GPG operation is waiting"
 	case "hmac":
-		return "An SSH connection is waiting"
+		return "A challenge-response request is waiting"
 	default:
 		return "A request is waiting"
 	}
