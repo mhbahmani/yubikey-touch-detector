@@ -126,8 +126,8 @@ func TestAssuanLineParserHandlesFragments(t *testing.T) {
 
 func TestGPGTrackerTimesOnlyQueueHead(t *testing.T) {
 	tracker, messages := testGPGTracker(t, 100*time.Millisecond)
-	first := tracker.start()
-	second := tracker.start()
+	first := tracker.start(notifier.TouchContext{})
+	second := tracker.start(notifier.TouchContext{})
 
 	time.Sleep(60 * time.Millisecond)
 	tracker.finish(first)
@@ -346,5 +346,21 @@ func TestShadowedKeygrips(t *testing.T) {
 	keygrips := shadowedKeygrips(files)
 	if !keygrips["ABCDEF"] || !keygrips["123456"] || len(keygrips) != 2 {
 		t.Fatalf("unexpected keygrips: %v", keygrips)
+	}
+}
+
+func TestGPGTrackerPublishesRequesterOnlyWhileNotified(t *testing.T) {
+	tracker, messages := testGPGTracker(t, 20*time.Millisecond)
+	op := tracker.start(notifier.TouchContext{Process: "git", PID: 4242})
+
+	// Receiving each message orders this goroutine after the tracker's update
+	expectGPGMessage(t, messages, notifier.GPG_ON, 100*time.Millisecond)
+	if op.removeContext == nil {
+		t.Fatal("requester was not published when the operation was notified")
+	}
+	tracker.finish(op)
+	expectGPGMessage(t, messages, notifier.GPG_OFF, 50*time.Millisecond)
+	if op.removeContext != nil {
+		t.Fatal("requester was still published after the operation finished")
 	}
 }

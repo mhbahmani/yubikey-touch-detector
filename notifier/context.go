@@ -11,7 +11,7 @@ import (
 )
 
 // DefaultDetailsTemplate describes the request that is waiting for a touch
-const DefaultDetailsTemplate = "{{if .Ansible}}Ansible to:\n{{.Target}}{{else if .Process}}requested by {{.Process}}{{else}}SSH to {{.Target}}{{with .Address}} ({{.}}){{end}}{{end}}"
+const DefaultDetailsTemplate = "{{if .Ansible}}Ansible to:\n{{.Target}}{{else if .Process}}requested by {{.Process}}{{with .Via}} via {{.}}{{end}}{{else if .PID}}requested by PID {{.PID}}{{else}}SSH to {{.Target}}{{with .Address}} ({{.}}){{end}}{{end}}"
 
 // TouchContext describes the request that is waiting for a touch, e.g. the
 // SSH session that asked for a signature. The zero value means unknown.
@@ -23,6 +23,12 @@ type TouchContext struct {
 	// Process names the application making the request when it is not ssh,
 	// e.g. a browser doing a WebAuthn operation
 	Process string
+	// PID identifies that application; it is set even when the name cannot
+	// be read, e.g. because the process already exited
+	PID int
+	// Via names the tool that talks to the key on behalf of Process, e.g. gpg
+	// when git signs a commit
+	Via string
 	// SSHCandidates lists possible destinations when a shared agent has concurrent requests.
 	SSHCandidates string
 	Ansible       bool
@@ -35,6 +41,8 @@ type DetailsData struct {
 	IP      string
 	Port    string
 	Process string
+	PID     int
+	Via     string
 	Target  string
 	Address string
 	Ansible bool
@@ -69,7 +77,7 @@ func SetDetailsTemplate(text string) error {
 // AddTouchContext records the request that is waiting for a touch and returns
 // a function that removes it again. Empty contexts are ignored.
 func AddTouchContext(ctx TouchContext) (remove func()) {
-	if ctx.Process == "" && ctx.Host == "" && ctx.IP == "" && ctx.SSHCandidates == "" {
+	if ctx.Process == "" && ctx.PID == 0 && ctx.Host == "" && ctx.IP == "" && ctx.SSHCandidates == "" {
 		return func() {}
 	}
 
@@ -141,6 +149,8 @@ func newDetailsData(ctx TouchContext) DetailsData {
 		IP:      ctx.IP,
 		Port:    ctx.Port,
 		Process: ctx.Process,
+		PID:     ctx.PID,
+		Via:     ctx.Via,
 		Target:  target,
 		Address: address,
 		Ansible: ctx.Ansible,

@@ -66,7 +66,7 @@ func main() {
 	flag.StringVar(&notificationTitle, "notify-title", notificationTitle, "desktop notification title template")
 	flag.StringVar(&notificationBody, "notify-body", notificationBody, "desktop notification body template")
 	flag.StringVar(&notificationUrgency, "notify-urgency", notificationUrgency, "desktop notification urgency: low, normal, or critical")
-	flag.StringVar(&detailsTemplate, "details-template", detailsTemplate, "describe the request waiting for a touch, e.g. \"SSH to {{.Target}} ({{.Address}})\". Fields: {{.User}}, {{.Host}}, {{.IP}}, {{.Port}}, {{.Target}} (user@host), {{.Address}} (ip:port), {{.Process}} (requesting app)")
+	flag.StringVar(&detailsTemplate, "details-template", detailsTemplate, "describe the request waiting for a touch, e.g. \"SSH to {{.Target}} ({{.Address}})\". Fields: {{.User}}, {{.Host}}, {{.IP}}, {{.Port}}, {{.Target}} (user@host), {{.Address}} (ip:port), {{.Process}} (requesting app), {{.PID}} (its process ID), {{.Via}} (signing tool it ran, e.g. gpg)")
 	flag.BoolVar(&stdout, "stdout", envStdout, "print notifications to stdout")
 	flag.BoolVar(&nosocket, "no-socket", envNosocket, "disable unix socket notifier")
 	flag.BoolVar(&dbus, "dbus", envDbus, "enable dbus server for IPC")

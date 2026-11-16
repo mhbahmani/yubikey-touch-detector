@@ -23,7 +23,7 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 	Set the desktop notification urgency: low, normal, or critical. Defaults to "normal". Notification daemons typically keep critical notifications on screen until they are dismissed; the app closes its notification as soon as the touch is registered.
 
 *-details-template* _template_
-	Go template describing the request that waits for a touch, e.g. the SSH session. Defaults to "SSH to {{.Target}} ({{.Address}})" for ssh requests and "requested by {{.Process}}" otherwise, e.g. for a browser making a WebAuthn request. Available fields: _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, _{{.Port}}_, _{{.Target}}_ (user@host), _{{.Address}}_ (ip:port), and _{{.Process}}_ (the requesting application). SSH details are detected on Linux only.
+	Go template describing the request that waits for a touch, e.g. the SSH session. Defaults to "SSH to {{.Target}} ({{.Address}})" for ssh requests and "requested by {{.Process}}" otherwise, e.g. for a browser making a WebAuthn request, with " via {{.Via}}" added when the application runs a signing tool, e.g. "requested by git via gpg", or "requested by PID {{.PID}}" when the process name cannot be read. Available fields: _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, _{{.Port}}_, _{{.Target}}_ (user@host), _{{.Address}}_ (ip:port), _{{.Process}}_ (the requesting application), _{{.PID}}_ (its process ID), and _{{.Via}}_ (the signing tool it ran: gpg, gpg2, gpgsm, or ssh-keygen). Requesting processes and SSH details are detected on Linux only.
 
 *-popup*
 	Show the built-in touch dialog (Linux only) while a touch is required.

@@ -29,6 +29,10 @@ type gpgOperation struct {
 	generation uint64
 	notified   bool
 	timer      *time.Timer
+	// requester describes the client that started the operation; it is
+	// published as a touch context only while the operation is notified
+	requester     notifier.TouchContext
+	removeContext func()
 }
 
 type gpgTrackerEventKind uint8
@@ -153,8 +157,8 @@ func newGPGOperationTracker(notifications *gpgNotifications, delay time.Duration
 	return tracker
 }
 
-func (tracker *gpgOperationTracker) start() *gpgOperation {
-	op := &gpgOperation{blocked: make(map[string]bool)}
+func (tracker *gpgOperationTracker) start(requester notifier.TouchContext) *gpgOperation {
+	op := &gpgOperation{blocked: make(map[string]bool), requester: requester}
 	tracker.events <- gpgTrackerEvent{kind: gpgTrackerStart, op: op}
 	return op
 }
@@ -201,6 +205,18 @@ func (tracker *gpgOperationTracker) run() {
 		}
 	}
 
+	// setNotified publishes the requester before the notification turns on,
+	// so notifiers can describe it, and withdraws it again afterwards
+	setNotified := func(op *gpgOperation, notified bool) {
+		op.notified = notified
+		if notified {
+			op.removeContext = notifier.AddTouchContext(op.requester)
+		} else if op.removeContext != nil {
+			op.removeContext()
+			op.removeContext = nil
+		}
+	}
+
 	start := func(op *gpgOperation) {
 		if op == nil || len(op.blocked) != 0 || op.notified || op.timer != nil {
 			return
@@ -227,7 +243,7 @@ func (tracker *gpgOperationTracker) run() {
 			if queue[0] == event.op {
 				stop(event.op)
 				if event.op.notified {
-					event.op.notified = false
+					setNotified(event.op, false)
 					tracker.notifications.set(gpgProxySource, false)
 				}
 			}
@@ -247,7 +263,7 @@ func (tracker *gpgOperationTracker) run() {
 			wasHead := index == 0
 			stop(event.op)
 			if event.op.notified {
-				event.op.notified = false
+				setNotified(event.op, false)
 				tracker.notifications.set(gpgProxySource, false)
 			}
 			queue = append(queue[:index], queue[index+1:]...)
@@ -259,13 +275,16 @@ func (tracker *gpgOperationTracker) run() {
 				continue
 			}
 			event.op.timer = nil
-			event.op.notified = true
+			setNotified(event.op, true)
 			tracker.notifications.set(gpgProxySource, true)
 		case gpgTrackerReset:
 			wasNotified := false
 			for _, op := range queue {
 				stop(op)
-				wasNotified = wasNotified || op.notified
+				if op.notified {
+					wasNotified = true
+					setNotified(op, false)
+				}
 			}
 			queue = nil
 			if wasNotified {
@@ -302,6 +321,7 @@ type gpgAgentConnectionState struct {
 	signingKey string
 	decryptKey string
 	operation  *gpgOperation
+	requester  notifier.TouchContext
 	inquiry    bool
 	closed     bool
 }
@@ -321,7 +341,7 @@ func (state *gpgAgentConnectionState) startOperation(cardBacked bool) {
 	}
 	state.inquiry = false
 	if cardBacked {
-		state.operation = state.tracker.start()
+		state.operation = state.tracker.start(state.requester)
 	}
 }
 
@@ -571,19 +591,6 @@ func (session *gpgProxySession) close(restore bool) {
 	}
 }
 
-func peerIsCurrentUser(connection *net.UnixConn) bool {
-	raw, err := connection.SyscallConn()
-	if err != nil {
-		return false
-	}
-	allowed := false
-	controlErr := raw.Control(func(fd uintptr) {
-		credentials, err := unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
-		allowed = err == nil && credentials.Uid == uint32(os.Getuid())
-	})
-	return controlErr == nil && allowed
-}
-
 func closeReceivedRights(oob []byte) {
 	messages, err := unix.ParseSocketControlMessage(oob)
 	if err != nil {
@@ -654,7 +661,8 @@ func relayGPGAgent(source, destination *net.UnixConn, parser *assuanLineParser, 
 }
 
 func (session *gpgProxySession) handleConnection(client *net.UnixConn) {
-	if !peerIsCurrentUser(client) {
+	cred, ok := peerCredentials(client)
+	if !ok || cred.Uid != uint32(os.Getuid()) {
 		client.Close()
 		return
 	}
@@ -677,7 +685,11 @@ func (session *gpgProxySession) handleConnection(client *net.UnixConn) {
 	defer client.Close()
 	defer backend.Close()
 
-	state := &gpgAgentConnectionState{tracker: session.tracker, cardKeys: session.cardKeys}
+	state := &gpgAgentConnectionState{
+		tracker:   session.tracker,
+		cardKeys:  session.cardKeys,
+		requester: requesterContext(int(cred.Pid)),
+	}
 	defer state.close()
 	clientParser := &assuanLineParser{}
 	serverParser := &assuanLineParser{}

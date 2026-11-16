@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 
 	"github.com/maximbaz/yubikey-touch-detector/notifier"
 )
@@ -20,27 +19,18 @@ import (
 // sshOptionsWithValue lists ssh flags that consume the following argument
 const sshOptionsWithValue = "BbcDEeFIiJLlmOoPpQRSWw"
 
-// sshRequestDetail describes the ssh client connected to the agent socket.
-// It returns the zero value when the client cannot be identified as ssh.
+// sshRequestDetail describes the client connected to the agent socket: the
+// destination for ssh, otherwise the name and PID of the requesting process,
+// e.g. ssh-keygen signing a git commit.
 func sshRequestDetail(conn net.Conn) notifier.TouchContext {
-	unixConn, ok := conn.(*net.UnixConn)
+	cred, ok := peerCredentials(conn)
 	if !ok {
 		return notifier.TouchContext{}
 	}
-	raw, err := unixConn.SyscallConn()
-	if err != nil {
-		return notifier.TouchContext{}
+	if ctx := describeSSHProcess(int(cred.Pid)); ctx != (notifier.TouchContext{}) {
+		return ctx
 	}
-
-	var cred *unix.Ucred
-	var credErr error
-	if err := raw.Control(func(fd uintptr) {
-		cred, credErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
-	}); err != nil || credErr != nil {
-		return notifier.TouchContext{}
-	}
-
-	return describeSSHProcess(int(cred.Pid))
+	return requesterContext(int(cred.Pid))
 }
 
 // describeSSHProcess reads the user, host, and remote address of an ssh process
@@ -224,8 +214,9 @@ func touchContextForDevice(devicePath string) notifier.TouchContext {
 		}
 		// The holder is the application itself, e.g. a browser; the agent
 		// fallback must not run here, it could blame an unrelated ssh session
-		log.Debugf("Touch request on %s comes from %s", devicePath, processName(holder))
-		return notifier.TouchContext{Process: processName(holder)}
+		ctx := requesterContext(holder)
+		log.Debugf("Touch request on %s comes from %s (PID %d)", devicePath, ctx.Process, ctx.PID)
+		return ctx
 	}
 	log.Debugf("No process found holding %s open, checking ssh sessions using an agent", devicePath)
 	return sshDetailForAgentRequest()

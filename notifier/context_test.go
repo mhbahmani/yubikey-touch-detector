@@ -106,6 +106,47 @@ func TestProcessOnlyContext(t *testing.T) {
 	}
 }
 
+func TestProcessNameIsPreferredOverPID(t *testing.T) {
+	remove := AddTouchContext(TouchContext{Process: "firefox", PID: 4242})
+	defer remove()
+
+	if got := touchDetails(); got != "requested by firefox" {
+		t.Fatalf("touchDetails() = %q, want %q", got, "requested by firefox")
+	}
+}
+
+func TestToolRunningOnBehalfOfAppIsNamed(t *testing.T) {
+	remove := AddTouchContext(TouchContext{Process: "git", PID: 4242, Via: "gpg"})
+	defer remove()
+
+	if got := touchDetails(); got != "requested by git via gpg" {
+		t.Fatalf("touchDetails() = %q, want %q", got, "requested by git via gpg")
+	}
+}
+
+func TestPIDOnlyContext(t *testing.T) {
+	remove := AddTouchContext(TouchContext{PID: 4242})
+	defer remove()
+
+	if got := touchDetails(); got != "requested by PID 4242" {
+		t.Fatalf("touchDetails() = %q, want %q", got, "requested by PID 4242")
+	}
+}
+
+func TestPIDInCustomDetailsTemplate(t *testing.T) {
+	defer SetDetailsTemplate(DefaultDetailsTemplate)
+
+	if err := SetDetailsTemplate("{{.Process}} [{{.PID}}]"); err != nil {
+		t.Fatal(err)
+	}
+	remove := AddTouchContext(TouchContext{Process: "git", PID: 4242})
+	defer remove()
+
+	if got := touchDetails(); got != "git [4242]" {
+		t.Fatalf("touchDetails() = %q", got)
+	}
+}
+
 func TestConcurrentSSHDetails(t *testing.T) {
 	defer SetDetailsTemplate(DefaultDetailsTemplate)
 	remove := AddTouchContext(TouchContext{SSHCandidates: "10.60.12.129:22, 10.60.12.130:22, 10.60.12.132:22"})
