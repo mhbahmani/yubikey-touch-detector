@@ -1,6 +1,8 @@
 package detector
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path"
 	"strings"
@@ -34,6 +36,10 @@ const (
 	HID_GLOBAL_ITEM_TAG_USAGE_PAGE = 0
 	HID_LOCAL_ITEM_TAG_USAGE       = 0
 )
+
+// deniedRetryInterval is how often devices this user may not open are tried
+// again, in case a permission change was missed
+const deniedRetryInterval = 30 * time.Second
 
 type u2fWatcherEvent struct {
 	id         uint64
@@ -69,13 +75,20 @@ func (state *u2fTouchState) update(id uint64, active bool) (notifier.Message, bo
 
 // WatchU2F watches when YubiKey is waiting for a touch on a U2F request
 func WatchU2F(notifiers *sync.Map) {
-	devicesEvents := initInotifyWatcher("U2F", "/dev", notify.Create)
+	// Permission changes matter as much as new devices: logind grants the
+	// active session access to a key through an ACL, which can arrive after
+	// the detector starts, e.g. right after logging in
+	devicesEvents := initInotifyWatcher("U2F", "/dev", notify.Create, notify.InAttrib)
 	defer notify.Stop(devicesEvents)
 
 	watcherEvents := make(chan u2fWatcherEvent, 32)
 	readyDevices := make(chan string, 10)
 	watchers := make(map[string]uint64)
 	pendingWatchers := make(map[string]bool)
+	// denied holds devices this user may not open yet
+	denied := make(map[string]bool)
+	retryDenied := time.NewTicker(deniedRetryInterval)
+	defer retryDenied.Stop()
 	state := newU2FTouchState()
 	removers := make(map[uint64]func())
 	var nextWatcherID uint64
@@ -92,7 +105,16 @@ func WatchU2F(notifiers *sync.Map) {
 			return
 		}
 		delete(pendingWatchers, devicePath)
-		if !isFidoU2FDevice(devicePath) {
+		isFido, err := isFidoU2FDevice(devicePath)
+		if errors.Is(err, fs.ErrPermission) {
+			if !denied[devicePath] {
+				log.Debugf("Cannot open '%v' yet, will retry when its permissions change: %v", devicePath, err)
+			}
+			denied[devicePath] = true
+			return
+		}
+		delete(denied, devicePath)
+		if !isFido {
 			return
 		}
 		nextWatcherID++
@@ -115,12 +137,27 @@ func WatchU2F(notifiers *sync.Map) {
 				return
 			}
 			devicePath := event.Path()
+			if event.Event() == notify.InAttrib {
+				// Only devices that could not be opened need another look
+				if denied[devicePath] {
+					startWatcher(devicePath)
+				}
+				continue
+			}
 			go func() {
 				time.Sleep(time.Second)
 				readyDevices <- devicePath
 			}()
 		case devicePath := <-readyDevices:
 			startWatcher(devicePath)
+		case <-retryDenied.C:
+			for devicePath := range denied {
+				if _, err := os.Stat(devicePath); err != nil {
+					delete(denied, devicePath)
+					continue
+				}
+				startWatcher(devicePath)
+			}
 		case event := <-watcherEvents:
 			// Describe the request before publishing, so notifiers see it
 			if event.active {
@@ -147,27 +184,30 @@ func WatchU2F(notifiers *sync.Map) {
 	}
 }
 
-func isFidoU2FDevice(devicePath string) bool {
+// isFidoU2FDevice reports whether a device speaks FIDO U2F. The error tells
+// a device this user may not open, e.g. while another session owns the seat,
+// apart from one that is simply something else.
+func isFidoU2FDevice(devicePath string) (bool, error) {
 	if !strings.HasPrefix(devicePath, "/dev/hidraw") {
-		return false
+		return false, nil
 	}
 
 	device, err := os.Open(devicePath)
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer device.Close()
 
 	size, err := unix.IoctlGetUint32(int(device.Fd()), unix.HIDIOCGRDESCSIZE)
 	if err != nil {
 		log.Warnf("Cannot get descriptor size for device '%v': %v", devicePath, err)
-		return false
+		return false, nil
 	}
 
 	data := unix.HIDRawReportDescriptor{Size: size}
 	if err := unix.IoctlHIDGetDesc(int(device.Fd()), &data); err != nil {
 		log.Warnf("Cannot get descriptor for device '%v': %v", devicePath, err)
-		return false
+		return false, nil
 	}
 
 	isFido := false
@@ -188,13 +228,13 @@ func isFidoU2FDevice(devicePath string) bool {
 		}
 
 		if isFido && hasU2F {
-			return true
+			return true, nil
 		}
 
 		i += uint32(size) + 1
 	}
 
-	return false
+	return false, nil
 }
 
 func runU2FWatcher(devicePath string, id uint64, events chan<- u2fWatcherEvent) {
