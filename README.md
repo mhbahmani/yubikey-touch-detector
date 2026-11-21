@@ -74,31 +74,7 @@ The built-in title and body can be overridden independently:
 $ yubikey-touch-detector --notify --notify-title "Security key required: {{.Reasons}}" --notify-body "Touch your YubiKey to continue."
 ```
 
-The title and body are Go templates. `{{.Reasons}}` expands to a sorted, comma-separated list of the active event types (`gpg`, `hmac`, and `u2f`). `{{.Details}}` describes what the touch is for and is empty when unknown. The default body is `Touch your YubiKey to continue ({{.Reasons}}).` followed by the details on a new line, allowing notification daemons such as dunst to match the event type.
-
-The details are described with one template per kind of request, so no template needs conditionals. Set only the ones you want to change:
-
-| Kind | Used for | Option | Default | Fields |
-| ---- | -------- | ------ | ------- | ------ |
-| SSH | an `ssh` client | `--ssh-details` | `SSH to {{.Target}} ({{.Address}}) {{.FromApp}}` | `{{.Target}}` (`user@host`), `{{.Address}}` (`ip:port`), `{{.App}}`, `{{.FromApp}}` (`from {{.App}}`), `{{.User}}`, `{{.Host}}`, `{{.IP}}`, `{{.Port}}` |
-| Ansible | ssh clients started by `ansible` or `ansible-playbook` | `--ansible-details` | `Ansible to:` and `{{.Hosts}}` on a new line | `{{.Hosts}}`, the server IPs as a bullet list, one per line |
-| App | any other program | `--app-details` | `requested by {{.Requester}}` | `{{.Requester}}`, `{{.Process}}`, `{{.PID}}`, `{{.Via}}` |
-
-For example, to show the SSH address in square brackets:
-
-```
-$ yubikey-touch-detector --popup --ssh-details "SSH to {{.Target}} [{{.Address}}] {{.FromApp}}"
-```
-
-Traces of missing values are tidied away: empty brackets are dropped and the spaces around them collapsed, e.g. `SSH to host () from Cursor` becomes `SSH to host from Cursor` when the address is unknown, and a trailing `{{.FromApp}}` disappears when no application is known.
-
-`{{.App}}` names the application that started an ssh client, so an IDE fetching from git shows e.g. `SSH to git@github.com (140.82.121.4:22) from Cursor`. The detector walks up from ssh past `git`, shells, and similar helpers to the first other program, and names it after its desktop entry, e.g. `GoLand 2026.2.3` or `Visual Studio Code`; programs without an entry are named after the application they run inside, then after their process name. Commands typed in a terminal name no application, while those run in an IDE's built-in terminal name the IDE.
-
-`{{.Requester}}` names the program that asked for the touch, the same way: `Brave Web Browser` for a browser WebAuthn request, `Cursor via gpg` when an application has git run a signing tool (`gpg`, `gpg2`, `gpgsm`, or `ssh-keygen`) to sign a commit, `git via gpg` for the same command typed in a terminal, or `PID 12345` when the name cannot be read, e.g. because the process already exited. A signing tool typed in a terminal is named on its own, e.g. `gpg`. `{{.Process}}`, `{{.PID}}`, and `{{.Via}}` hold the parts separately. Requesting programs, applications, and SSH details are detected on Linux only.
-
-If several Ansible authentications share an agent, all of them must be identified as Ansible before the Ansible template is used; the list describes pending destinations, not which request the current touch will satisfy. For other concurrent SSH authentications, `{{.Target}}` lists the possible addresses prefixed with `one of`; the individual user, host, IP, port, and address fields remain empty.
-
-For full control, `--details-template` describes every kind with a single template instead, and takes precedence over the options above. It accepts all of the fields above, plus `{{.Ansible}}`, which is true for Ansible requests.
+The title and body are Go templates. `{{.Reasons}}` expands to a sorted, comma-separated list of the active event types (`gpg`, `hmac`, and `u2f`). `{{.Details}}` describes what the touch is for, as set up under [Touch details](#touch-details), and is empty when unknown. The default body is `Touch your YubiKey to continue ({{.Reasons}}).` followed by the details on a new line, allowing notification daemons such as dunst to match the event type.
 
 The notification urgency can also be set to `low`, `normal` (default), or `critical`. Most notification daemons keep `critical` notifications on screen until they are dismissed, and the app closes its notification as soon as the touch is registered, making this useful when the default banner is too easy to miss:
 
@@ -122,7 +98,33 @@ It appears in the middle of the monitor under the pointer and stays above other 
 $ yubikey-touch-detector --popup --popup-position top-right
 ```
 
-Wayland does not let windows choose their position, so in a Wayland session the dialog runs through XWayland unless the position is `auto`. Without XWayland it falls back to Wayland, where the window manager places it.
+Wayland does not let windows choose their position, so in a Wayland session the dialog runs through XWayland unless the position is `auto`. Without XWayland it falls back to Wayland, where the window manager places it. The service usually starts with your login, before the desktop has published its display settings, so the detector reads them from the session when it first shows the dialog and remembers them from then on.
+
+#### Touch details
+
+Desktop notifications (as `{{.Details}}`) and the touch dialog describe what each touch is for, e.g. `SSH to git@github.com (140.82.121.4:22) from Cursor` or `requested by Brave Web Browser`. The description uses one template per kind of request, so no template needs conditionals. Set only the ones you want to change:
+
+| Kind | Used for | Option | Default | Fields |
+| ---- | -------- | ------ | ------- | ------ |
+| SSH | an `ssh` client | `--ssh-details` | `SSH to {{.Target}} ({{.Address}}) {{.FromApp}}` | `{{.Target}}` (`user@host`), `{{.Address}}` (`ip:port`), `{{.App}}`, `{{.FromApp}}` (`from {{.App}}`), `{{.User}}`, `{{.Host}}`, `{{.IP}}`, `{{.Port}}` |
+| Ansible | ssh clients started by `ansible` or `ansible-playbook` | `--ansible-details` | `Ansible to:` and `{{.Hosts}}` on a new line | `{{.Hosts}}`, the server IPs as a bullet list, one per line |
+| App | any other program | `--app-details` | `requested by {{.Requester}}` | `{{.Requester}}`, `{{.Process}}`, `{{.PID}}`, `{{.Via}}` |
+
+For example, to show the SSH address in square brackets:
+
+```
+$ yubikey-touch-detector --popup --ssh-details "SSH to {{.Target}} [{{.Address}}] {{.FromApp}}"
+```
+
+Traces of missing values are tidied away: empty brackets are dropped and the spaces around them collapsed, e.g. `SSH to host () from Cursor` becomes `SSH to host from Cursor` when the address is unknown, and a trailing `{{.FromApp}}` disappears when no application is known.
+
+`{{.App}}` names the application that started an ssh client, so an IDE fetching from git shows e.g. `SSH to git@github.com (140.82.121.4:22) from Cursor`. The detector walks up from ssh past `git`, shells, and similar helpers to the first other program, and names it after its desktop entry, e.g. `GoLand 2026.2.3` or `Visual Studio Code`; programs without an entry are named after the application they run inside, then after their process name. Commands typed in a terminal name no application, while those run in an IDE's built-in terminal name the IDE.
+
+`{{.Requester}}` names the program that asked for the touch, the same way: `Brave Web Browser` for a browser WebAuthn request, `Cursor via gpg` when an application has git run a signing tool (`gpg`, `gpg2`, `gpgsm`, or `ssh-keygen`) to sign a commit, `git via gpg` for the same command typed in a terminal, or `PID 12345` when the name cannot be read, e.g. because the process already exited. A signing tool typed in a terminal is named on its own, e.g. `gpg`. `{{.Process}}`, `{{.PID}}`, and `{{.Via}}` hold the parts separately. Requesting programs, applications, and SSH details are detected on Linux only.
+
+If several Ansible authentications share an agent, all of them must be identified as Ansible before the Ansible template is used; the list describes pending destinations, not which request the current touch will satisfy. For other concurrent SSH authentications, `{{.Target}}` lists the possible addresses prefixed with `one of`; the individual user, host, IP, port, and address fields remain empty.
+
+For full control, `--details-template` describes every kind with a single template instead, and takes precedence over the options above. It accepts all of the fields above, plus `{{.Ansible}}`, which is true for Ansible requests.
 
 #### Configuring the app
 
@@ -145,7 +147,11 @@ The app supports the following environment variables and CLI arguments (CLI args
 | `YUBIKEY_TOUCH_DETECTOR_NOSOCKET`  | `--no-socket` |
 | `YUBIKEY_TOUCH_DETECTOR_DBUS`      | `--dbus`      |
 
-You can configure the systemd service by defining any of these environment variables in `$XDG_CONFIG_HOME/yubikey-touch-detector/service.conf` - see `service.conf.example` for a configuration example.
+You can configure the systemd service by defining any of these environment variables in `$XDG_CONFIG_HOME/yubikey-touch-detector/service.conf` - see [`service.conf.example`](service.conf.example) for a commented example. Restart the service to apply changes:
+
+```
+$ systemctl --user restart yubikey-touch-detector.service
+```
 
 #### Integrating with other UI components
 
@@ -194,7 +200,9 @@ _See also: [FAQ: How do I configure my YubiKey to require a physical touch?](#fa
 
 In order to detect whether a U2F/FIDO2 operation requests a touch on YubiKey, the app is listening on the appropriate `/dev/hidraw*` device for corresponding messages as per FIDO spec.
 
-See `detector/u2f.go` for more info on implementation details, the source code is documented and contains relevant links to the spec.
+See `detector/u2f_linux.go` for more info on implementation details, the source code is documented and contains relevant links to the spec.
+
+The current desktop session owns the device: right after logging in, it can take a moment until the session is allowed to open it. The detector then waits and starts watching the key as soon as its permissions allow.
 
 ### Detecting gpg operations
 
@@ -213,6 +221,12 @@ The proxy preserves Unix file descriptor passing and restores the original agent
 The requests performed on a local host will be captured by the `gpg` detector. However, in order to detect the use of forwarded `ssh-agent` on a remote host, an additional detector was introduced.
 
 This detector runs as a proxy on the `$SSH_AUTH_SOCK`, listens to communications with that socket, and starts an independent card busy check when an event is captured.
+
+FIDO keys (`ed25519-sk` and `ecdsa-sk`) ask for a touch through the security key itself, so they are detected by the u2f detector whichever agent holds them, e.g. `ssh-agent` or GNOME Keyring.
+
+### Describing the request
+
+To fill in the [touch details](#touch-details), the detector identifies the process behind each request through `/proc`: the client connected to the agent socket, the program holding the FIDO device open, or the client of `gpg-agent`. For ssh it reads the destination from the command line and the open TCP connection. It then walks up the process tree past `git`, shells, and similar helpers to the application that started the request, and names it after its desktop entry, or after the application whose systemd scope it runs in.
 
 ### Detecting HMAC operations
 

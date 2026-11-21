@@ -22,6 +22,8 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 *-notify-urgency* _urgency_
 	Set the desktop notification urgency: low, normal, or critical. Defaults to "normal". Notification daemons typically keep critical notifications on screen until they are dismissed; the app closes its notification as soon as the touch is registered.
 
+The notification title and body use Go template syntax. _{{.Reasons}}_ expands to a sorted, comma-separated list of active event types: _gpg_, _hmac_, and _u2f_. _{{.Details}}_ describes the request, such as the SSH host (with IP and port) that is waiting for the touch; it is empty when unknown. The touch dialog shows the same description. Its format is set with *-ssh-details*, *-ansible-details*, and *-app-details*.
+
 *-ssh-details* _template_
 	Go template describing a request from an ssh client. Defaults to "SSH to {{.Target}} ({{.Address}}) {{.FromApp}}". Fields: _{{.Target}}_ (user@host, or "one of" and the possible addresses for concurrent requests), _{{.Address}}_ (ip:port), _{{.App}}_ (the application that started ssh, e.g. "Cursor" when an IDE runs git; empty for commands typed in a terminal), _{{.FromApp}}_ ("from" and the application, or empty), _{{.User}}_, _{{.Host}}_ (as typed), _{{.IP}}_, and _{{.Port}}_. Applications are named after their desktop entry.
 
@@ -40,9 +42,7 @@ yubikey-touch-detector - detect when a YubiKey is waiting for a touch
 	Show the built-in touch dialog (Linux only) while a touch is required. Press Escape or click the dialog to dismiss it early.
 
 *-popup-position* _position_
-	Where to show the touch dialog on the monitor under the pointer: center, top, bottom, left, right, top-left, top-right, bottom-left, or bottom-right. Defaults to "center". The dialog stays above other windows. Use "auto" to let the window manager place it. Wayland does not let windows choose their position, so in a Wayland session a positioned dialog runs through XWayland when it is available.
-
-The notification title and body use Go template syntax. _{{.Reasons}}_ expands to a sorted, comma-separated list of active event types: _gpg_, _hmac_, and _u2f_. _{{.Details}}_ describes the request, such as the SSH host (with IP and port) that is waiting for the touch; it is empty when unknown. Its format is set with *-ssh-details*, *-ansible-details*, and *-app-details*.
+	Where to show the touch dialog on the monitor under the pointer: center, top, bottom, left, right, top-left, top-right, bottom-left, or bottom-right. Defaults to "center". The dialog stays above other windows. Use "auto" to let the window manager place it. Wayland does not let windows choose their position, so in a Wayland session a positioned dialog runs through XWayland when it is available. The service usually starts with the login, before the desktop publishes its display settings, so they are read from the session when the dialog is first shown.
 
 *-no-socket*
 	Disable unix socket notifier.
@@ -62,7 +62,7 @@ The notification title and body use Go template syntax. _{{.Reasons}}_ expands t
 # POPUP
 
 *popup* [_reason_] [_details_]
-	Show the built-in touch dialog (Linux only) until the process is terminated. Started by the app itself when *-popup* is given; not normally called by hand.
+	Show the built-in touch dialog (Linux only) until the process is terminated, the key is touched, or it is dismissed. The app starts it when *-popup* is given and passes its content through the environment; the arguments are for trying it by hand, e.g. "yubikey-touch-detector popup u2f 'SSH to host'".
 
 # DESCRIPTION
 
@@ -115,6 +115,9 @@ _YUBIKEY_TOUCH_DETECTOR_DBUS_
 	Equivalent to specifying *-dbus*.
 
 # FILES
+
+_$XDG_CONFIG_HOME/yubikey-touch-detector/service.conf_
+	Environment variables for the systemd user service, see *ENVIRONMENT*. Restart the service to apply changes.
 
 _$XDG_RUNTIME_DIR/yubikey-touch-detector.socket_
 	The socket exposing events on Linux.

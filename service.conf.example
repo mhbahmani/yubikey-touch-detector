@@ -1,29 +1,50 @@
+# Settings for the yubikey-touch-detector systemd user service.
+# Copy this file to $XDG_CONFIG_HOME/yubikey-touch-detector/service.conf
+# (usually ~/.config/yubikey-touch-detector/service.conf) and restart it:
+#   systemctl --user restart yubikey-touch-detector.service
+#
+# Values containing spaces or braces need double quotes. systemd keeps \n
+# inside quotes as is, so break the line inside the quotes for a new line.
+# To use a commented value that spans lines, remove the # from each line.
+
 # enable debug logging
 YUBIKEY_TOUCH_DETECTOR_VERBOSE=false
 
 # show desktop notifications
 YUBIKEY_TOUCH_DETECTOR_NOTIFY=true
 
-# customize desktop notifications
+# customize desktop notifications; the body below is the default
 # YUBIKEY_TOUCH_DETECTOR_NOTIFY_TITLE="Security key required"
-# YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY="Touch your YubiKey to continue ({{.Reasons}}).{{with .Details}}\n{{.}}{{end}}"
+# YUBIKEY_TOUCH_DETECTOR_NOTIFY_BODY="Touch your YubiKey to continue ({{.Reasons}}).{{with .Details}}
+# {{.}}{{end}}"
 # YUBIKEY_TOUCH_DETECTOR_NOTIFY_URGENCY="critical"
 
-# show a dialog window while a touch is required (Linux only)
+# show a dialog window while a touch is required (Linux only); Escape or a
+# click dismisses it
 # YUBIKEY_TOUCH_DETECTOR_POPUP=true
 
 # where to show the dialog: center (default), top, bottom, left, right,
-# top-left, top-right, bottom-left, bottom-right, or auto
+# top-left, top-right, bottom-left, bottom-right, or auto to let the window
+# manager decide
 # YUBIKEY_TOUCH_DETECTOR_POPUP_POSITION=top-right
 
-# describe the request that waits for a touch, one template per kind
-# YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS="SSH to {{.Target}} [{{.Address}}] {{.FromApp}}"
+# describe what each touch is for, in notifications and the dialog, with one
+# template per kind of request; the values below are the defaults.
+# Brackets and spaces left by unknown values are removed, e.g. without an
+# address or application the ssh line reads "SSH to user@host".
+# YUBIKEY_TOUCH_DETECTOR_SSH_DETAILS="SSH to {{.Target}} ({{.Address}}) {{.FromApp}}"
 # YUBIKEY_TOUCH_DETECTOR_ANSIBLE_DETAILS="Ansible to:
 # {{.Hosts}}"
 # YUBIKEY_TOUCH_DETECTOR_APP_DETAILS="requested by {{.Requester}}"
+
+# advanced: describe every kind of request with this one template instead
+# YUBIKEY_TOUCH_DETECTOR_DETAILS_TEMPLATE="{{if .Ansible}}Ansible{{else}}{{.Target}}{{.Requester}}{{end}}"
 
 # do not print notifications to stdout
 YUBIKEY_TOUCH_DETECTOR_STDOUT=false
 
 # disable Un*x socket notifier
 YUBIKEY_TOUCH_DETECTOR_NOSOCKET=false
+
+# expose the touch state over D-Bus for other UI components
+# YUBIKEY_TOUCH_DETECTOR_DBUS=true
