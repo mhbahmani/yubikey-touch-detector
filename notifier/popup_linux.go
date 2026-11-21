@@ -3,12 +3,14 @@
 package notifier
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"syscall"
 
+	"github.com/godbus/dbus/v5"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,7 +33,7 @@ func SetupPopupNotifier(notifiers *sync.Map, position string) {
 			return
 		}
 
-		cmd := popupCommand(self, os.Environ(), state.reasons(), touchDetails(), position)
+		cmd := popupCommand(self, sessionEnvironment(os.Environ()), state.reasons(), touchDetails(), position)
 		if err := cmd.Start(); err != nil {
 			log.Error("Cannot launch the touch dialog: ", err)
 			return
@@ -118,6 +120,72 @@ func popupEnvironment(environ []string, reasons, details, position string) []str
 		PopupDetailsEnv+"="+details,
 		PopupPositionEnv+"="+position,
 	)
+}
+
+// displayVariables are what a window needs to reach the desktop
+var displayVariables = []string{"DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"}
+
+// sessionEnvironment returns environ with the desktop session's current
+// display variables. The detector usually starts with the session, before
+// the desktop exports them, so its own environment lacks them; without
+// DISPLAY the dialog could not be positioned through XWayland.
+func sessionEnvironment(environ []string) []string {
+	session, err := systemdUserEnvironment()
+	if err != nil {
+		log.Debugf("Cannot read the session environment, using the detector's own: %v", err)
+		return environ
+	}
+	return mergeDisplayVariables(environ, session)
+}
+
+// systemdUserEnvironment reads the environment the user's service manager
+// gives new processes, which the desktop updates when it starts
+func systemdUserEnvironment() ([]string, error) {
+	conn, err := dbus.SessionBusPrivate()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	if err := conn.Auth(nil); err != nil {
+		return nil, err
+	}
+	if err := conn.Hello(); err != nil {
+		return nil, err
+	}
+	value, err := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1").GetProperty("org.freedesktop.systemd1.Manager.Environment")
+	if err != nil {
+		return nil, err
+	}
+	environment, ok := value.Value().([]string)
+	if !ok {
+		return nil, fmt.Errorf("unexpected environment type %T", value.Value())
+	}
+	return environment, nil
+}
+
+// mergeDisplayVariables takes each display variable from session when it is
+// set there, as the session's values are current, and keeps the rest of
+// environ
+func mergeDisplayVariables(environ, session []string) []string {
+	merged := make([]string, 0, len(environ)+len(displayVariables))
+	current := make(map[string]string)
+	for _, name := range displayVariables {
+		if value := lookupEnv(session, name); value != "" {
+			current[name] = value
+		}
+	}
+	for _, entry := range environ {
+		name, _, _ := strings.Cut(entry, "=")
+		if _, replaced := current[name]; !replaced {
+			merged = append(merged, entry)
+		}
+	}
+	for _, name := range displayVariables {
+		if value, found := current[name]; found {
+			merged = append(merged, name+"="+value)
+		}
+	}
+	return merged
 }
 
 func lookupEnv(environ []string, name string) string {

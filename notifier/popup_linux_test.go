@@ -71,3 +71,45 @@ func TestValidatePopupPosition(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeDisplayVariables(t *testing.T) {
+	session := []string{"DISPLAY=:0", "WAYLAND_DISPLAY=wayland-0", "XAUTHORITY=/run/user/1/.mutter-Xwaylandauth", "PATH=/session/bin"}
+	for _, test := range []struct {
+		name    string
+		environ []string
+		want    []string
+	}{
+		{
+			// Started with the session, before the desktop exported them
+			"missing from the detector",
+			[]string{"HOME=/home/u", "PATH=/usr/bin"},
+			[]string{"HOME=/home/u", "PATH=/usr/bin", "DISPLAY=:0", "WAYLAND_DISPLAY=wayland-0", "XAUTHORITY=/run/user/1/.mutter-Xwaylandauth"},
+		},
+		{
+			// Left over from an earlier login
+			"stale in the detector",
+			[]string{"DISPLAY=:1", "HOME=/home/u", "XAUTHORITY=/old"},
+			[]string{"HOME=/home/u", "DISPLAY=:0", "WAYLAND_DISPLAY=wayland-0", "XAUTHORITY=/run/user/1/.mutter-Xwaylandauth"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := mergeDisplayVariables(test.environ, session); !slices.Equal(got, test.want) {
+				t.Fatalf("mergeDisplayVariables() = %q, want %q", got, test.want)
+			}
+		})
+	}
+	// Variables the session does not set are kept as they are
+	if got := mergeDisplayVariables([]string{"DISPLAY=:5"}, []string{"PATH=/bin"}); !slices.Equal(got, []string{"DISPLAY=:5"}) {
+		t.Fatalf("mergeDisplayVariables() without session values = %q", got)
+	}
+}
+
+func TestSessionEnvironmentReadsSystemd(t *testing.T) {
+	session, err := systemdUserEnvironment()
+	if err != nil {
+		t.Skipf("no user service manager on the session bus: %v", err)
+	}
+	if len(session) == 0 {
+		t.Fatal("the user service manager reported an empty environment")
+	}
+}
