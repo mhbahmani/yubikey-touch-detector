@@ -3,6 +3,7 @@
 package notifier
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"syscall"
@@ -111,5 +112,80 @@ func TestSessionEnvironmentReadsSystemd(t *testing.T) {
 	}
 	if len(session) == 0 {
 		t.Fatal("the user service manager reported an empty environment")
+	}
+}
+
+// fakeSession counts lookups and returns the environment it currently holds
+type fakeSession struct {
+	calls   int
+	environ []string
+	err     error
+}
+
+func (session *fakeSession) lookup() ([]string, error) {
+	session.calls++
+	return session.environ, session.err
+}
+
+func TestDisplayCacheLooksUpUntilDisplayIsKnown(t *testing.T) {
+	session := &fakeSession{environ: []string{"WAYLAND_DISPLAY=wayland-0"}}
+	cache := newDisplayCache([]string{"HOME=/home/u"}, session.lookup)
+
+	// Early in a login only Wayland is ready; it is used but not kept
+	env := cache.environment([]string{"HOME=/home/u"})
+	if !slices.Contains(env, "WAYLAND_DISPLAY=wayland-0") {
+		t.Fatalf("env %q lacks the session's WAYLAND_DISPLAY", env)
+	}
+	cache.environment(nil)
+	if session.calls != 2 {
+		t.Fatalf("looked up %d times before DISPLAY was known, want 2", session.calls)
+	}
+
+	// Once XWayland is up, the values are kept
+	session.environ = []string{"DISPLAY=:0", "WAYLAND_DISPLAY=wayland-0", "XAUTHORITY=/run/user/1/auth", "PATH=/bin"}
+	cache.environment(nil)
+	for i := 0; i < 3; i++ {
+		env = cache.environment([]string{"HOME=/home/u"})
+	}
+	if session.calls != 3 {
+		t.Fatalf("looked up %d times, want no lookups after DISPLAY was known", session.calls)
+	}
+	if want := []string{"HOME=/home/u", "DISPLAY=:0", "WAYLAND_DISPLAY=wayland-0", "XAUTHORITY=/run/user/1/auth"}; !slices.Equal(env, want) {
+		t.Fatalf("env = %q, want %q", env, want)
+	}
+
+	// After a failed dialog the values are read again
+	if !cache.forget() {
+		t.Fatal("forget() found nothing to drop")
+	}
+	session.environ = []string{"DISPLAY=:1", "XAUTHORITY=/run/user/1/new-auth"}
+	if env := cache.environment(nil); !slices.Contains(env, "DISPLAY=:1") || session.calls != 4 {
+		t.Fatalf("after forget: env %q with %d lookups, want fresh DISPLAY=:1 from a 4th lookup", env, session.calls)
+	}
+}
+
+func TestDisplayCacheTrustsDisplayFromStart(t *testing.T) {
+	session := &fakeSession{}
+	environ := []string{"DISPLAY=:0", "WAYLAND_DISPLAY=wayland-0", "HOME=/home/u"}
+	cache := newDisplayCache(environ, session.lookup)
+	if env := cache.environment(environ); !slices.Contains(env, "DISPLAY=:0") || session.calls != 0 {
+		t.Fatalf("env %q with %d lookups, want the detector's DISPLAY and no lookup", env, session.calls)
+	}
+	if cache.forget() != true || cache.forget() != false {
+		t.Fatal("forget() should report a drop only once")
+	}
+}
+
+func TestDisplayCacheFallsBackWhenLookupFails(t *testing.T) {
+	session := &fakeSession{err: errors.New("no session bus")}
+	cache := newDisplayCache(nil, session.lookup)
+	environ := []string{"HOME=/home/u"}
+	for i := 0; i < 2; i++ {
+		if env := cache.environment(environ); !slices.Equal(env, environ) {
+			t.Fatalf("env = %q, want the detector's own %q", env, environ)
+		}
+	}
+	if session.calls != 2 {
+		t.Fatalf("looked up %d times, want a retry on every dialog while failing", session.calls)
 	}
 }

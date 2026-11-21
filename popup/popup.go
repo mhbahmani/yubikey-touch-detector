@@ -4,6 +4,7 @@
 package popup
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"os"
@@ -105,6 +106,13 @@ func Run(options Options) {
 		for {
 			switch event := window.Event().(type) {
 			case app.DestroyEvent:
+				// An error means the window could not open, e.g. the
+				// display is unreachable; the detector then retries with
+				// fresh display settings
+				if event.Err != nil {
+					fmt.Fprintln(os.Stderr, "Cannot show the touch dialog:", event.Err)
+					os.Exit(1)
+				}
 				os.Exit(0)
 			case app.X11ViewEvent:
 				view = event

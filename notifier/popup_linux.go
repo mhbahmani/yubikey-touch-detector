@@ -9,10 +9,21 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 	log "github.com/sirupsen/logrus"
 )
+
+// failedStartWindow is how soon a dialog that exits with an error counts as
+// having failed to open its window
+const failedStartWindow = 3 * time.Second
+
+type popupExit struct {
+	cmd     *exec.Cmd
+	err     error
+	elapsed time.Duration
+}
 
 // SetupPopupNotifier shows the built-in touch dialog (the "popup"
 // subcommand of this binary) whenever a touch is required, and terminates
@@ -23,9 +34,10 @@ func SetupPopupNotifier(notifiers *sync.Map, position string) {
 	notifiers.Store("notifier/popup", touch)
 
 	state := newTouchState()
+	display := newDisplayCache(os.Environ(), systemdUserEnvironment)
 	var running *exec.Cmd
-	var restart bool
-	exited := make(chan *exec.Cmd, 1)
+	var restart, stopping, retried bool
+	exited := make(chan popupExit, 1)
 	start := func() {
 		self, err := os.Executable()
 		if err != nil {
@@ -33,28 +45,37 @@ func SetupPopupNotifier(notifiers *sync.Map, position string) {
 			return
 		}
 
-		cmd := popupCommand(self, sessionEnvironment(os.Environ()), state.reasons(), touchDetails(), position)
+		cmd := popupCommand(self, display.environment(os.Environ()), state.reasons(), touchDetails(), position)
 		if err := cmd.Start(); err != nil {
 			log.Error("Cannot launch the touch dialog: ", err)
 			return
 		}
-		running = cmd
+		running, stopping = cmd, false
+		started := time.Now()
 
 		go func() {
-			if err := cmd.Wait(); err != nil {
+			err := cmd.Wait()
+			if err != nil {
 				log.Debugf("Touch dialog exited: %v", err)
 			}
-			exited <- cmd
+			exited <- popupExit{cmd: cmd, err: err, elapsed: time.Since(started)}
 		}()
 	}
 
 	for {
 		var value Message
 		select {
-		case cmd := <-exited:
-			if running == cmd {
+		case exit := <-exited:
+			if running == exit.cmd {
 				running = nil
-				if restart && len(state.active) > 0 {
+				// A dialog that could not open its window may have used
+				// display settings that went stale, e.g. after XWayland
+				// restarted; read them again and retry once
+				if exit.err != nil && !stopping && exit.elapsed < failedStartWindow && display.forget() && !retried && len(state.active) > 0 {
+					log.Debug("Touch dialog failed to open, retrying with fresh display settings")
+					retried = true
+					start()
+				} else if restart && len(state.active) > 0 {
 					restart = false
 					start()
 				}
@@ -65,13 +86,14 @@ func SetupPopupNotifier(notifiers *sync.Map, position string) {
 
 		wasActive, isActive, _ := state.update(value)
 		if isActive && !wasActive {
+			retried = false
 			if running == nil {
 				start()
 			} else {
 				restart = true
 			}
 		} else if !isActive && wasActive && running != nil {
-			restart = false
+			restart, stopping = false, true
 			if err := syscall.Kill(-running.Process.Pid, syscall.SIGTERM); err != nil {
 				log.Error("Cannot close the touch dialog: ", err)
 			}
@@ -125,17 +147,59 @@ func popupEnvironment(environ []string, reasons, details, position string) []str
 // displayVariables are what a window needs to reach the desktop
 var displayVariables = []string{"DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"}
 
-// sessionEnvironment returns environ with the desktop session's current
-// display variables. The detector usually starts with the session, before
-// the desktop exports them, so its own environment lacks them; without
-// DISPLAY the dialog could not be positioned through XWayland.
-func sessionEnvironment(environ []string) []string {
-	session, err := systemdUserEnvironment()
+// displayCache remembers the display variables the dialog needs. The
+// detector usually starts with the session, before the desktop exports them,
+// so until they are known they are read from the user's service manager each
+// time the dialog opens. Once DISPLAY is known they are kept, as positioning
+// needs it; a WAYLAND_DISPLAY alone may come before XWayland is ready.
+type displayCache struct {
+	values []string
+	lookup func() ([]string, error)
+}
+
+func newDisplayCache(environ []string, lookup func() ([]string, error)) *displayCache {
+	cache := &displayCache{lookup: lookup}
+	// Started inside a running session, the detector's own values are current
+	if lookupEnv(environ, "DISPLAY") != "" {
+		cache.values = displayEntries(environ)
+	}
+	return cache
+}
+
+// environment returns environ with the session's display variables
+func (cache *displayCache) environment(environ []string) []string {
+	if cache.values != nil {
+		return mergeDisplayVariables(environ, cache.values)
+	}
+	session, err := cache.lookup()
 	if err != nil {
 		log.Debugf("Cannot read the session environment, using the detector's own: %v", err)
 		return environ
 	}
-	return mergeDisplayVariables(environ, session)
+	entries := displayEntries(session)
+	if lookupEnv(entries, "DISPLAY") != "" {
+		cache.values = entries
+	}
+	return mergeDisplayVariables(environ, entries)
+}
+
+// forget drops remembered values so the next dialog reads them again, and
+// reports whether there was anything to drop
+func (cache *displayCache) forget() bool {
+	had := cache.values != nil
+	cache.values = nil
+	return had
+}
+
+// displayEntries picks the display variables out of an environment
+func displayEntries(environ []string) []string {
+	var entries []string
+	for _, name := range displayVariables {
+		if value := lookupEnv(environ, name); value != "" {
+			entries = append(entries, name+"="+value)
+		}
+	}
+	return entries
 }
 
 // systemdUserEnvironment reads the environment the user's service manager
